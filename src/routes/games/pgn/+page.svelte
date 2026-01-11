@@ -18,51 +18,71 @@
 		Ghost,
 		Play,
 		Trash2,
-		BookOpen
+		BookOpen,
+		Users,
+		Trophy
 	} from 'lucide-svelte';
 
-	const pgn = page.url.searchParams.get('pgn') || '';
 	const game = new Chess();
 
-	let history: string[] = [];
-	let fens: string[] = [];
-	let currentIndex = 0;
-	let orientation: 'white' | 'black' = 'white';
-	let whiteName = 'White';
-	let blackName = 'Black';
+	// Game State
+	let history = $state<string[]>([]);
+	let fens = $state<string[]>([]);
+	let currentIndex = $state(0);
+	let orientation = $state<'white' | 'black'>('white');
+	let whiteName = $state('White');
+	let blackName = $state('Black');
 
 	// Analysis & Sandbox State
-	let engineInfo = { evaluation: 0, bestMove: '', pv: [] as string[] };
-	let moveRatings: (string | null)[] = [];
-	let sandboxActive = false;
-	let sandboxGame = new Chess();
-	let sandboxFen = '';
-	let sandboxHistory: string[] = [];
-	let showArrows = true;
+	let engineInfo = $state({ evaluation: 0, bestMove: '', pv: [] as string[] });
+	let moveRatings = $state<(string | null)[]>([]);
+	let sandboxActive = $state(false);
+	let sandboxGame = $state(new Chess());
+	let sandboxFen = $state('');
+	let sandboxHistory = $state<string[]>([]);
+	let showArrows = $state(true);
+	let showMobileAnalysis = $state(false);
 
-	if (pgn) {
-		try {
-			game.loadPgn(pgn);
-			const moves = game.history();
-			const testGame = new Chess();
-			fens = [testGame.fen()];
-			for (const move of moves) {
-				testGame.move(move);
-				fens.push(testGame.fen());
+	// Reactive PGN derived from URL
+	let pgnString = $derived(page.url.searchParams.get('pgn') || '');
+
+	// Reactively load game when PGN changes
+	$effect(() => {
+		if (pgnString) {
+			try {
+				// Reset game
+				game.loadPgn(pgnString);
+
+				// Extract headers first to check for SetUp/FEN
+				const headers = game.header();
+				whiteName = headers['White'] || 'White';
+				blackName = headers['Black'] || 'Black';
+
+				// Rebuild history & fens
+				const moves = game.history();
+				// Use the starting FEN from headers if present, otherwise default
+				const startFen =
+					headers['SetUp'] === '1' && headers['FEN']
+						? headers['FEN']
+						: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+				const testGame = new Chess(startFen);
+				const newFens = [testGame.fen()];
+
+				for (const move of moves) {
+					testGame.move(move);
+					newFens.push(testGame.fen());
+				}
+
+				fens = newFens;
+				history = moves;
+				currentIndex = newFens.length - 1;
+				moveRatings = new Array(newFens.length).fill(null);
+			} catch (e) {
+				console.error('Failed to parse PGN', e);
 			}
-			history = moves;
-			currentIndex = fens.length - 1;
-			moveRatings = new Array(fens.length).fill(null);
-
-			// Extract player names from PGN
-			const whiteMatch = pgn.match(/\[White\s+"([^"]+)"\]/);
-			const blackMatch = pgn.match(/\[Black\s+"([^"]+)"\]/);
-			if (whiteMatch) whiteName = whiteMatch[1];
-			if (blackMatch) blackName = blackMatch[1];
-		} catch (e) {
-			console.error('Failed to parse PGN', e);
 		}
-	}
+	});
 
 	function goToMove(index: number) {
 		if (index >= 0 && index < fens.length) {
@@ -107,8 +127,6 @@
 
 		// Simple move rating logic (only for games, not sandbox)
 		if (!sandboxActive && currentIndex > 0) {
-			// This is a simplified demo of move ratings
-			// In a real app, you'd calculate this by comparing evals of current move vs best move
 			calculateMoveRating(currentIndex, evaluation);
 		}
 	}
@@ -195,39 +213,50 @@
 		}
 	}
 
-	const movePairs = Array.from({ length: Math.ceil(history.length / 2) }, (_, i) => [
-		history[i * 2],
-		history[i * 2 + 1]
-	]);
+	let movePairs = $derived(
+		Array.from({ length: Math.ceil(history.length / 2) }, (_, i) => [
+			history[i * 2],
+			history[i * 2 + 1]
+		])
+	);
 </script>
 
 <div
-	class="h-screen w-screen flex flex-col bg-[#161512] text-neutral-200 overflow-hidden font-sans"
+	class="min-h-screen lg:h-screen w-screen flex flex-col bg-[#161512] text-neutral-200 lg:overflow-hidden font-sans"
 >
 	<!-- Main Area: Eval Bar | Board | Sidebar -->
 	<div class="flex-1 flex overflow-hidden p-2 sm:p-4 gap-2 sm:gap-4 justify-center">
-		<!-- 1. Evaluation Bar (Chess.com Style) -->
-		<div class="h-full py-2 shrink-0 hidden sm:block">
-			<EvalBar evaluation={engineInfo.evaluation} orientation="vertical" />
-		</div>
-
 		<!-- 2. Board Container (Maximized) -->
 		<div
-			class="flex-1 flex flex-col justify-center items-center overflow-hidden min-w-0 gap-1 sm:gap-2"
+			class="flex-1 flex flex-col justify-center items-center overflow-y-auto lg:overflow-hidden min-w-0 gap-1 sm:gap-2 no-scrollbar"
 		>
 			<!-- Top Player Name -->
-			<div class="w-full max-w-[calc(100vw-1rem)] sm:max-w-[min(100%,calc(100vh-8rem))]">
+			<div
+				class="w-full max-w-3xl lg:max-w-[calc(100vh-16rem)] mb-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
+			>
 				<div
-					class="bg-[#262421] border border-neutral-800 rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between"
+					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1 sm:py-2 flex items-center justify-between shadow-xl"
 				>
-					<span class="font-bold text-xs sm:text-base truncate">
-						{orientation === 'white' ? blackName : whiteName}
-					</span>
+					<div class="flex items-center gap-2 overflow-hidden">
+						<div
+							class="h-6 w-6 sm:h-8 sm:w-8 rounded bg-neutral-700 flex items-center justify-center shrink-0"
+						>
+							<Users class="h-4 w-4 sm:h-5 sm:w-5 text-neutral-400" />
+						</div>
+						<span class="font-bold text-xs sm:text-base truncate text-white">
+							{orientation === 'white' ? blackName : whiteName}
+						</span>
+					</div>
+					<div class="text-[10px] font-mono text-neutral-500 bg-white/5 px-2 py-0.5 rounded">
+						OPPONENT
+					</div>
 				</div>
 			</div>
 
 			<!-- Chess Board -->
-			<div class="w-full max-w-[calc(100vw-0.5rem)] sm:max-w-[min(100%,calc(100vh-8rem))]">
+			<div
+				class="w-full max-w-3xl lg:max-w-[calc(100vh-16rem)] shrink-0 transition-all duration-300"
+			>
 				<ChessBoard
 					fen={sandboxActive ? sandboxFen : fens[currentIndex]}
 					{orientation}
@@ -237,13 +266,25 @@
 			</div>
 
 			<!-- Bottom Player Name -->
-			<div class="w-full max-w-[calc(100vw-1rem)] sm:max-w-[min(100%,calc(100vh-8rem))]">
+			<div
+				class="w-full max-w-3xl lg:max-w-[calc(100vh-16rem)] mt-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
+			>
 				<div
-					class="bg-[#262421] border border-neutral-800 rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between"
+					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1 sm:py-2 flex items-center justify-between shadow-xl"
 				>
-					<span class="font-bold text-xs sm:text-base truncate">
-						{orientation === 'white' ? whiteName : blackName}
-					</span>
+					<div class="flex items-center gap-2 overflow-hidden">
+						<div
+							class="h-6 w-6 sm:h-8 sm:w-8 rounded bg-primary/20 flex items-center justify-center shrink-0"
+						>
+							<Users class="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+						</div>
+						<span class="font-bold text-xs sm:text-base truncate text-white">
+							{orientation === 'white' ? whiteName : blackName}
+						</span>
+					</div>
+					<div class="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">
+						YOU
+					</div>
 				</div>
 			</div>
 		</div>
@@ -513,30 +554,35 @@
 	</div>
 
 	<div
-		class="lg:hidden h-20 shrink-0 bg-[#262421] border-t border-neutral-800 flex flex-col items-center justify-center px-4 gap-2"
+		class="lg:hidden h-20 shrink-0 bg-[#262421] border-t border-neutral-800 flex flex-col items-center justify-center px-4 gap-2 relative z-50"
 	>
-		<div class="flex items-center justify-between w-full max-w-sm">
-			<Button
-				variant="ghost"
-				size="icon"
-				onclick={firstMove}
-				disabled={currentIndex === 0 || sandboxActive}
-				class="text-neutral-500 hover:text-white"
-			>
-				<ChevronsLeft class="h-5 w-5" />
-			</Button>
+		<div class="flex items-center justify-between w-full max-w-sm gap-2">
+			<div class="flex items-center gap-0.5">
+				<Button
+					variant="ghost"
+					size="icon"
+					onclick={firstMove}
+					disabled={currentIndex === 0 || sandboxActive}
+					class="h-10 w-8 text-neutral-500 hover:text-white"
+				>
+					<ChevronsLeft class="h-5 w-5" />
+				</Button>
 
-			<Button
-				variant="ghost"
-				size="icon"
-				onclick={prevMove}
-				disabled={currentIndex === 0 || sandboxActive}
-				class="text-neutral-400"
-			>
-				<ChevronLeft class="h-6 w-6" />
-			</Button>
+				<Button
+					variant="ghost"
+					size="icon"
+					onclick={prevMove}
+					disabled={currentIndex === 0 || sandboxActive}
+					class="h-10 w-10 text-neutral-400"
+				>
+					<ChevronLeft class="h-6 w-6" />
+				</Button>
+			</div>
 
-			<div class="flex flex-col items-center min-w-[100px]">
+			<button
+				onclick={() => (showMobileAnalysis = !showMobileAnalysis)}
+				class="flex flex-col items-center min-w-[100px] border border-white/5 bg-white/5 py-1 px-2 rounded-lg active:scale-95 transition-transform"
+			>
 				<div
 					class="px-3 py-0.5 bg-white/10 rounded font-black text-[10px] text-neutral-400 uppercase tracking-tighter mb-1"
 				>
@@ -557,32 +603,201 @@
 						<span class="text-xs font-black uppercase tracking-tight">Sandbox</span>
 					</div>
 				{:else}
-					<div class="h-4"></div>
+					<div class="text-[10px] font-bold text-neutral-600 uppercase">Analysis & Sandbox</div>
 				{/if}
+			</button>
+
+			<div class="flex items-center gap-0.5">
+				<Button
+					variant="ghost"
+					size="icon"
+					onclick={nextMove}
+					disabled={currentIndex === fens.length - 1 || sandboxActive}
+					class="h-10 w-10 text-neutral-400"
+				>
+					<ChevronRight class="h-6 w-6" />
+				</Button>
+
+				<Button
+					variant="ghost"
+					size="icon"
+					onclick={lastMove}
+					disabled={currentIndex === fens.length - 1 || sandboxActive}
+					class="h-10 w-8 text-neutral-500 hover:text-white"
+				>
+					<ChevronsRight class="h-5 w-5" />
+				</Button>
 			</div>
-
-			<Button
-				variant="ghost"
-				size="icon"
-				onclick={nextMove}
-				disabled={currentIndex === fens.length - 1 || sandboxActive}
-				class="text-neutral-400"
-			>
-				<ChevronRight class="h-6 w-6" />
-			</Button>
-
-			<Button
-				variant="ghost"
-				size="icon"
-				onclick={lastMove}
-				disabled={currentIndex === fens.length - 1 || sandboxActive}
-				class="text-neutral-500 hover:text-white"
-			>
-				<ChevronsRight class="h-5 w-5" />
-			</Button>
 		</div>
 	</div>
 </div>
+
+{#if showMobileAnalysis}
+	<!-- Mobile Analysis Overlay -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="lg:hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-md animate-in fade-in duration-300 flex flex-col pt-12"
+		onclick={() => (showMobileAnalysis = false)}
+	>
+		<div
+			class="flex-1 bg-[#1e1c1a] border-t border-neutral-800 rounded-t-3xl p-6 flex flex-col gap-6 overflow-hidden animate-in slide-in-from-bottom-10 duration-500"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="flex items-center justify-between shrink-0">
+				<h2 class="text-xl font-black uppercase tracking-widest text-white flex items-center gap-2">
+					<Trophy class="h-5 w-5 text-yellow-500" />
+					Game Review
+				</h2>
+				<button
+					onclick={() => (showMobileAnalysis = false)}
+					class="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center text-neutral-400 hover:text-white"
+				>
+					<RotateCcw class="h-5 w-5" />
+				</button>
+			</div>
+
+			<!-- Analysis Card -->
+			<div class="bg-[#262421] border border-neutral-800 rounded-2xl p-4 flex flex-col gap-4">
+				<div class="flex items-center justify-between">
+					<span
+						class="text-[10px] font-black uppercase text-neutral-500 tracking-widest leading-none"
+						>Best Move</span
+					>
+					{#if sandboxActive}
+						<span
+							class="text-[9px] font-bold text-orange-400 animate-pulse flex items-center gap-1"
+						>
+							<Ghost class="h-3 w-3" /> SANDBOX
+						</span>
+					{/if}
+				</div>
+
+				<div class="flex items-center gap-4">
+					{#if engineInfo.bestMove}
+						<div
+							class="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-black font-mono text-lg shadow-xl shadow-primary/20"
+						>
+							{engineInfo.bestMove}
+						</div>
+						<div class="flex-1 flex gap-1.5 overflow-x-auto custom-scrollbar pb-2">
+							{#each engineInfo.pv.slice(0, 3) as move}
+								<span
+									class="text-xs font-mono bg-white/5 px-2.5 py-1.5 rounded-md border border-white/10 whitespace-nowrap"
+									>{move}</span
+								>
+							{/each}
+						</div>
+					{:else}
+						<div class="flex items-center gap-3">
+							<div
+								class="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"
+							></div>
+							<span class="text-xs font-bold text-neutral-500">Stockfish thinking...</span>
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Move List -->
+			<div
+				class="flex-1 border border-neutral-800 bg-[#161512] rounded-2xl overflow-hidden flex flex-col"
+			>
+				<div
+					class="bg-white/5 px-4 py-3 border-b border-neutral-800 flex items-center justify-between"
+				>
+					<h3 class="text-xs font-black uppercase text-neutral-400">Move List</h3>
+					<span class="text-[10px] font-mono text-neutral-600">{history.length} moves</span>
+				</div>
+				<div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+					<div class="grid grid-cols-12 gap-1">
+						{#each movePairs as pair, i}
+							{@const idx1 = i * 2 + 1}
+							{@const idx2 = (i + 1) * 2}
+							<div
+								class="col-span-2 py-2 text-[10px] text-neutral-700 font-mono text-center self-center"
+							>
+								{i + 1}.
+							</div>
+							<button
+								onclick={() => {
+									goToMove(idx1);
+									showMobileAnalysis = false;
+								}}
+								class="col-span-5 px-3 py-2.5 rounded-lg text-xs font-bold {currentIndex === idx1 &&
+								!sandboxActive
+									? 'bg-primary text-primary-foreground shadow-lg'
+									: 'text-neutral-400 hover:bg-white/5'}"
+							>
+								{pair[0]}
+							</button>
+							{#if pair[1]}
+								<button
+									onclick={() => {
+										goToMove(idx2);
+										showMobileAnalysis = false;
+									}}
+									class="col-span-5 px-3 py-2.5 rounded-lg text-xs font-bold {currentIndex ===
+										idx2 && !sandboxActive
+										? 'bg-primary text-primary-foreground shadow-lg'
+										: 'text-neutral-400 hover:bg-white/5'}"
+								>
+									{pair[1]}
+								</button>
+							{/if}
+						{/each}
+					</div>
+				</div>
+			</div>
+
+			<!-- Quick Actions -->
+			<div class="grid grid-cols-2 gap-3 pb-8">
+				<Button
+					variant="outline"
+					class="h-12 border-neutral-800 text-xs font-black uppercase"
+					onclick={() => {
+						toggleOrientation();
+						showMobileAnalysis = false;
+					}}
+				>
+					<RotateCcw class="mr-2 h-4 w-4" /> Flip Board
+				</Button>
+				<Button
+					variant={showArrows ? 'default' : 'outline'}
+					class="h-12 border-neutral-800 text-xs font-black uppercase"
+					onclick={() => toggleArrows()}
+				>
+					<Zap class="mr-2 h-4 w-4 {showArrows ? 'fill-current' : ''}" />
+					{showArrows ? 'Hide' : 'Show'} Arrows
+				</Button>
+
+				{#if sandboxActive}
+					<Button
+						variant="destructive"
+						class="col-span-2 h-12 text-xs font-black uppercase tracking-tight"
+						onclick={() => {
+							exitSandbox();
+							showMobileAnalysis = false;
+						}}
+					>
+						<Trash2 class="mr-2 h-4 w-4" /> Exit Sandbox
+					</Button>
+				{:else}
+					<Button
+						variant="outline"
+						class="col-span-2 h-12 border-neutral-800 text-xs font-black uppercase tracking-tight hover:bg-white/5"
+						onclick={() => {
+							enterSandbox();
+							showMobileAnalysis = false;
+						}}
+					>
+						<Play class="mr-2 h-4 w-4" /> Try Moves (Sandbox)
+					</Button>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.custom-scrollbar::-webkit-scrollbar {
@@ -598,5 +813,13 @@
 	}
 	.custom-scrollbar::-webkit-scrollbar-thumb:hover {
 		background: hsl(var(--muted-foreground) / 0.5);
+	}
+
+	.no-scrollbar::-webkit-scrollbar {
+		display: none;
+	}
+	.no-scrollbar {
+		-ms-overflow-style: none;
+		scrollbar-width: none;
 	}
 </style>

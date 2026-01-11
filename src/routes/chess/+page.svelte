@@ -38,8 +38,8 @@
 		const { from, to } = event.detail;
 
 		// Check if the move is a pawn promotion
-		const moves = game.moves({ square: from, verbose: true });
-		const move = moves.find((m) => m.to === to);
+		const moves = game.moves({ square: from as import('chess.js').Square, verbose: true });
+		const move = moves.find((m) => (m as any).to === to) as any;
 
 		if (move?.flags.includes('p')) {
 			// It's a promotion, show the dialog
@@ -97,7 +97,7 @@
 						class="h-20 w-20 rounded-md bg-secondary hover:bg-primary/20 focus:outline-none focus:ring-2 focus:ring-primary"
 					>
 						<Icon
-							name={{ q: 'queen', r: 'rook', b: 'bishop', n: 'knight' }[piece]}
+							name={{ q: 'queen', r: 'rook', b: 'bishop', n: 'knight' }[piece] || 'queen'}
 							color={game.turn()}
 							size="100%"
 						/>

@@ -358,14 +358,16 @@
 		</div>
 
 		<!-- Captured Pieces (Top - Opponent) -->
-		<div class="flex h-8 w-full items-center gap-1 rounded bg-muted/50 px-2 min-h-[32px]">
+		<div
+			class="flex h-10 w-full items-center gap-1.5 rounded-lg bg-neutral-900/50 border border-white/5 px-3 min-h-[40px] shadow-inner"
+		>
 			{#each orientation === 'white' ? capturedPieces.w : capturedPieces.b as piece}
-				<div class="relative h-6 w-6">
+				<div class="relative h-7 w-7 transition-transform hover:scale-110">
 					<Icon
 						name={getPieceName(piece)}
 						color={orientation === 'white' ? 'w' : 'b'}
 						size="100%"
-						class="drop-shadow-sm filter"
+						class="drop-shadow-sm filter brightness-110"
 					/>
 				</div>
 			{/each}
@@ -388,7 +390,7 @@
 						{@const isKingInDanger = square === kingSquare}
 						{@const isSelected = square === selectedSquare}
 
-						<!-- svelte-ignore a11y-no-static-element-interactions -->
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="relative flex items-center justify-center transition-all duration-200
                             {isDark ? 'bg-[#769656] text-[#eeeed2]' : 'bg-[#eeeed2] text-[#769656]'}
@@ -458,8 +460,8 @@
 
 			<!-- Checkmate Overlay -->
 			{#if isCheckmate && winner}
-				<!-- svelte-ignore a11y-click-events-have-key-events -->
-				<!-- svelte-ignore a11y-no-static-element-interactions -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-500 cursor-pointer"
 					onclick={() => {
@@ -484,8 +486,8 @@
 
 			<!-- Draw Overlay -->
 			{#if isDraw}
-				<!-- svelte-ignore a11y-click-events-have-key-events -->
-				<!-- svelte-ignore a11y-no-static-element-interactions -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-500 cursor-pointer"
 					onclick={() => {
@@ -520,14 +522,16 @@
 		</div>
 
 		<!-- Captured Pieces (Bottom - Me) -->
-		<div class="flex h-8 w-full items-center gap-1 rounded bg-muted/50 px-2 min-h-[32px]">
+		<div
+			class="flex h-10 w-full items-center gap-1.5 rounded-lg bg-neutral-900/50 border border-white/5 px-3 min-h-[40px] shadow-inner"
+		>
 			{#each orientation === 'white' ? capturedPieces.b : capturedPieces.w as piece}
-				<div class="relative h-6 w-6">
+				<div class="relative h-7 w-7 transition-transform hover:scale-110">
 					<Icon
 						name={getPieceName(piece)}
 						color={orientation === 'white' ? 'b' : 'w'}
 						size="100%"
-						class="drop-shadow-sm filter"
+						class="drop-shadow-sm filter brightness-110"
 					/>
 				</div>
 			{/each}
