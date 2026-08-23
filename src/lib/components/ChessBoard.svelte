@@ -3,12 +3,15 @@
 	import { Trophy } from 'lucide-svelte';
 	import { Handshake } from 'lucide-svelte';
 	import { Chess } from 'chess.js';
-	import type { Square, Move } from 'chess.js';
+	import type { Square } from 'chess.js';
 	import Icon from './Icons.svelte';
 	import EvalBar from './EvalBar.svelte';
 
 	export let fen: string = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 	export let orientation: 'white' | 'black' = 'white';
+	// UCI move (e.g. "e2e4") to draw as a suggestion arrow, and whether to show it at all.
+	export let bestMoveUci: string | null = null;
+	export let showBestMoveArrow: boolean = true;
 
 	const dispatch = createEventDispatcher<{
 		move: { from: Square; to: Square; promotion?: string };
@@ -24,6 +27,7 @@
 	let winner: 'White' | 'Black' | null = null;
 	let kingSquare: Square | null = null;
 	let evaluation = 0;
+	let hasEvaluated = false; // becomes true once the engine reports its first real score
 
 	$: {
 		if (fen !== chess.fen()) {
@@ -38,18 +42,24 @@
 
 	let stockfish: Worker | null = null;
 
-	// Requests are serialized: only one `go` is ever in flight, and the sign of
-	// every score is resolved against the position that was actually sent, not
-	// whatever `turn` happens to be by the time the engine replies. Without this
-	// a rapid sequence of moves could attribute an eval/best-move to the wrong
-	// position and briefly show nonsense (e.g. a "blunder" that never happened).
+	// Requests are serialized: only one `go` is ever in flight. Each request gets
+	// a token, and a `bestmove` reply is only trusted (dispatched to the parent)
+	// if no newer request has superseded it in the meantime - otherwise a search
+	// that got `stop`'d the instant a new move arrived could flash a stale/
+	// half-baked "best move" for a position that isn't even on screen anymore.
+	// The sign of every score is resolved against the position that was actually
+	// sent, not whatever `turn` happens to be by the time the engine replies.
 	let searching = false;
 	let activeTurn: 'w' | 'b' = 'w';
+	let requestToken = 0;
+	let activeToken = 0;
 	let queuedFen: string | null = null;
 	let queuedTurn: 'w' | 'b' = 'w';
 
 	function requestEngineEval(fenToEval: string, turnToEval: 'w' | 'b') {
 		if (!stockfish) return;
+
+		requestToken++;
 
 		if (searching) {
 			queuedFen = fenToEval;
@@ -60,8 +70,9 @@
 
 		searching = true;
 		activeTurn = turnToEval;
+		activeToken = requestToken;
 		stockfish.postMessage(`position fen ${fenToEval}`);
-		stockfish.postMessage('go depth 15');
+		stockfish.postMessage('go depth 18');
 	}
 
 	onMount(() => {
@@ -73,17 +84,22 @@
 				if (typeof line !== 'string') return;
 
 				if (line.startsWith('bestmove')) {
-					const match = line.match(/bestmove\s+(\S+)/);
-					if (match && match[1] !== '(none)') {
-						dispatch('engine', { evaluation, bestMove: match[1], pv: [] });
-					}
-
+					const finishedToken = activeToken;
 					searching = false;
 					if (queuedFen) {
 						const nextFen = queuedFen;
 						const nextTurn = queuedTurn;
 						queuedFen = null;
 						requestEngineEval(nextFen, nextTurn);
+					}
+
+					// Only trust this result if nothing newer has come in while it
+					// was running (or being aborted).
+					if (finishedToken === requestToken) {
+						const match = line.match(/bestmove\s+(\S+)/);
+						if (match && match[1] !== '(none)') {
+							dispatch('engine', { evaluation, bestMove: match[1], pv: [] });
+						}
 					}
 					return;
 				}
@@ -112,13 +128,16 @@
 					}
 
 					evaluation = currentEval;
+					hasEvaluated = true;
 					dispatch('engine', { evaluation, bestMove: '', pv: currentPv });
 				}
 			};
 
 			stockfish.postMessage('uci');
+			// A bigger hash table means fewer repeated searches on deep/long games,
+			// at the cost of more memory - worth it for meaningfully stronger analysis.
+			stockfish.postMessage('setoption name Hash value 128');
 			stockfish.postMessage('isready');
-			// stockfish.postMessage('ucinewgame'); // Doing this on load might reset generic engine state?
 		} catch (e) {
 			console.error('Stockfish init failed', e);
 			stockfish = null;
@@ -172,12 +191,39 @@
 		return [row, col];
 	}
 
+	// Best-move suggestion arrow, in board-percentage coordinates (0-100).
+	$: arrow = (() => {
+		if (!bestMoveUci || bestMoveUci.length < 4) return null;
+		try {
+			const [fr, fc] = squareToRC(bestMoveUci.slice(0, 2));
+			const [tr, tc] = squareToRC(bestMoveUci.slice(2, 4));
+			const dispFr = orientation === 'white' ? fr : 7 - fr;
+			const dispFc = orientation === 'white' ? fc : 7 - fc;
+			const dispTr = orientation === 'white' ? tr : 7 - tr;
+			const dispTc = orientation === 'white' ? tc : 7 - tc;
+			return {
+				x1: (dispFc + 0.5) * 12.5,
+				y1: (dispFr + 0.5) * 12.5,
+				x2: (dispTc + 0.5) * 12.5,
+				y2: (dispTr + 0.5) * 12.5
+			};
+		} catch {
+			return null;
+		}
+	})();
+
 	function syncPieces(newBoard: ReturnType<Chess['board']>) {
+		// These Maps/Sets are throwaway scratch space local to this single
+		// synchronous pass (never read reactively/in markup), so the plain
+		// built-ins are correct here - SvelteMap/SvelteSet would just add
+		// proxy overhead for no benefit.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const oldBySquare = new Map<string, PieceState>();
 		for (const p of pieces) {
 			oldBySquare.set(getSquare(p.row, p.col), p);
 		}
 
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newBySquare = new Map<string, { type: string; color: 'w' | 'b' }>();
 		for (let r = 0; r < 8; r++) {
 			for (let c = 0; c < 8; c++) {
@@ -187,6 +233,7 @@
 		}
 
 		const nextPieces: PieceState[] = [];
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const usedOldIds = new Set<number>();
 		const unmatchedNewSquares: string[] = [];
 
@@ -293,10 +340,6 @@
 		} else {
 			evaluation = getMaterialEvaluation();
 		}
-	}
-
-	function getPieceColorClasses(color: string) {
-		return '';
 	}
 
 	function getCapturedPieces() {
@@ -467,18 +510,6 @@
 		return score;
 	}
 
-	function getSquareCoords(square: string) {
-		const file = square.charCodeAt(0) - 97; // a-h
-		const rank = 8 - parseInt(square[1]); // 1-8
-
-		const actualFile = orientation === 'white' ? file : 7 - file;
-		const actualRank = orientation === 'white' ? rank : 7 - rank;
-
-		return {
-			x: actualFile + 0.5,
-			y: actualRank + 0.5
-		};
-	}
 </script>
 
 <div
@@ -486,20 +517,20 @@
 >
 	<!-- Eval Bar (Desktop) -->
 	<div class="h-auto w-8 py-8 hidden sm:block">
-		<EvalBar {evaluation} orientation="vertical" />
+		<EvalBar {evaluation} loading={!hasEvaluated} orientation="vertical" />
 	</div>
 
 	<div class="flex flex-col gap-2 sm:gap-4 w-full max-w-full sm:max-w-2xl">
 		<!-- Eval Bar (Mobile) -->
 		<div class="w-full h-6 block sm:hidden">
-			<EvalBar {evaluation} orientation="horizontal" />
+			<EvalBar {evaluation} loading={!hasEvaluated} orientation="horizontal" />
 		</div>
 
 		<!-- Captured Pieces (Top - Opponent) -->
 		<div
 			class="flex h-10 w-full items-center gap-1.5 rounded-lg bg-neutral-900/50 border border-white/5 px-3 min-h-[40px] shadow-inner"
 		>
-			{#each orientation === 'white' ? capturedPieces.w : capturedPieces.b as piece}
+			{#each orientation === 'white' ? capturedPieces.w : capturedPieces.b as piece, i (i + piece)}
 				<div class="relative h-7 w-7 transition-transform hover:scale-110">
 					<Icon
 						name={getPieceName(piece)}
@@ -516,8 +547,8 @@
 			class="aspect-square w-full select-none rounded-lg shadow-2xl relative overflow-hidden ring-4 ring-border"
 		>
 			<div class="grid h-full w-full grid-cols-8 grid-rows-8">
-				{#each rows as row}
-					{#each cols as col}
+				{#each rows as row (row)}
+					{#each cols as col (col)}
 						{@const isDark = (row + col) % 2 === 1}
 						{@const square = getSquare(row, col)}
 						{@const piece = board[row][col]}
@@ -606,6 +637,38 @@
 				{/each}
 			</div>
 
+			<!-- Best Move Arrow -->
+			{#if showBestMoveArrow && arrow}
+				<svg
+					class="absolute inset-0 z-20 pointer-events-none"
+					viewBox="0 0 100 100"
+					preserveAspectRatio="none"
+				>
+					<defs>
+						<marker
+							id="pp-arrowhead"
+							markerWidth="2.4"
+							markerHeight="2.4"
+							refX="1.2"
+							refY="1.2"
+							orient="auto"
+						>
+							<path d="M0,0 L2.4,1.2 L0,2.4 Z" fill="rgba(255,170,0,0.85)" />
+						</marker>
+					</defs>
+					<line
+						x1={arrow.x1}
+						y1={arrow.y1}
+						x2={arrow.x2}
+						y2={arrow.y2}
+						stroke="rgba(255,170,0,0.85)"
+						stroke-width="2.2"
+						stroke-linecap="round"
+						marker-end="url(#pp-arrowhead)"
+					/>
+				</svg>
+			{/if}
+
 			<!-- Checkmate Overlay -->
 			{#if isCheckmate && winner}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -673,7 +736,7 @@
 		<div
 			class="flex h-10 w-full items-center gap-1.5 rounded-lg bg-neutral-900/50 border border-white/5 px-3 min-h-[40px] shadow-inner"
 		>
-			{#each orientation === 'white' ? capturedPieces.b : capturedPieces.w as piece}
+			{#each orientation === 'white' ? capturedPieces.b : capturedPieces.w as piece, i (i + piece)}
 				<div class="relative h-7 w-7 transition-transform hover:scale-110">
 					<Icon
 						name={getPieceName(piece)}

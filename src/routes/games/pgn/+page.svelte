@@ -1,17 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Chess } from 'chess.js';
 	import ChessBoard from '$lib/components/ChessBoard.svelte';
-	import EvalBar from '$lib/components/EvalBar.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import { analyzeGame } from '$lib/utils/chess-analysis';
+	import { analyzeGame, type GameReport, type MoveRating } from '$lib/utils/chess-analysis';
+	import GameReportCard from '$lib/components/GameReportCard.svelte';
 	import {
 		ChevronLeft,
 		ChevronRight,
 		ChevronsLeft,
 		ChevronsRight,
-		RotateCcw,
+		ArrowUpDown,
+		X,
 		Zap,
 		AlertCircle,
 		CheckCircle2,
@@ -36,7 +38,7 @@
 
 	// Analysis & Sandbox State
 	let engineInfo = $state({ evaluation: 0, bestMove: '', pv: [] as string[] });
-	let moveRatings = $state<(string | null)[]>([]);
+	let moveRatings = $state<(MoveRating | null)[]>([]);
 	let sandboxActive = $state(false);
 	let sandboxGame = $state(new Chess());
 	let sandboxFen = $state('');
@@ -50,6 +52,8 @@
 	let analysisTotal = $state(0);
 	let analysisFailed = $state(false);
 	let analysisRequestId = 0;
+	let gameReport = $state<GameReport | null>(null);
+	let accuracyByPly = $state<(number | null)[]>([]);
 
 	// Reactive PGN derived from URL
 	let pgnString = $derived(page.url.searchParams.get('pgn') || '');
@@ -86,6 +90,8 @@
 				history = moves;
 				currentIndex = newFens.length - 1;
 				moveRatings = new Array(newFens.length).fill(null);
+				gameReport = null;
+				accuracyByPly = new Array(newFens.length).fill(null);
 
 				runAnalysis(newFens, moves);
 			} catch (e) {
@@ -109,6 +115,8 @@
 			.then((result) => {
 				if (requestId !== analysisRequestId) return;
 				moveRatings = result.ratings;
+				accuracyByPly = result.accuracyByPly;
+				gameReport = result.report;
 				isAnalyzing = false;
 			})
 			.catch((e) => {
@@ -265,6 +273,8 @@
 				<ChessBoard
 					fen={sandboxActive ? sandboxFen : fens[currentIndex]}
 					{orientation}
+					bestMoveUci={engineInfo.bestMove || null}
+					showBestMoveArrow={showArrows}
 					on:engine={handleEngineUpdate}
 					on:move={handleMove}
 				/>
@@ -301,19 +311,28 @@
 			<!-- Simple Sidebar Header / Branding -->
 			<div class="flex items-center justify-between px-2 shrink-0">
 				<div class="flex items-center gap-2">
-					<div
-						class="h-8 w-8 bg-primary rounded-lg flex items-center justify-center font-black italic shadow-lg shadow-primary/20 text-primary-foreground"
-					>
-						P
-					</div>
 					<h2 class="font-bold tracking-tight text-sm uppercase opacity-60">Review</h2>
 				</div>
 				<Button
 					variant="ghost"
 					size="sm"
-					onclick={() => goto('/')}
+					onclick={() => goto(resolve('/'))}
 					class="h-8 text-xs text-neutral-400 hover:text-white">Close</Button
 				>
+			</div>
+
+			<!-- Game Report: accuracy, estimated rating, per-move accuracy map -->
+			<div class="shrink-0">
+				<GameReportCard
+					report={gameReport}
+					{whiteName}
+					{blackName}
+					ratings={moveRatings}
+					{accuracyByPly}
+					{currentIndex}
+					{isAnalyzing}
+					onSelect={goToMove}
+				/>
 			</div>
 
 			<!-- Analysis Summary & Ratings -->
@@ -370,7 +389,7 @@
 							</div>
 							<div class="flex-1 overflow-x-auto custom-scrollbar whitespace-nowrap pb-2">
 								<div class="flex gap-1.5">
-									{#each engineInfo.pv.slice(0, 5) as move}
+									{#each engineInfo.pv.slice(0, 5) as move, i (i)}
 										<span
 											class="text-[10px] font-mono bg-white/5 px-2 py-1 rounded border border-white/10"
 											>{move}</span
@@ -421,7 +440,7 @@
 				</div>
 				<div class="flex-1 overflow-y-auto custom-scrollbar p-1.5 bg-[#1e1c1a]">
 					<div class="grid grid-cols-12 gap-0.5">
-						{#each movePairs as pair, i}
+						{#each movePairs as pair, i (i)}
 							{@const idx1 = i * 2 + 1}
 							{@const idx2 = (i + 1) * 2}
 							<div
@@ -482,7 +501,7 @@
 								<Ghost class="h-3.5 w-3.5" /> Variation Tree
 							</div>
 							<div class="flex flex-wrap gap-1.5">
-								{#each sandboxHistory as move}
+								{#each sandboxHistory as move, i (i)}
 									<span
 										class="px-2 py-1 bg-orange-400/10 text-orange-400 rounded-sm text-[10px] font-black font-mono border border-orange-400/20"
 										>{move}</span
@@ -517,15 +536,6 @@
 						</Button>
 
 						<Button
-							variant="outline"
-							size="icon"
-							onclick={toggleOrientation}
-							class="h-10 w-12 border-neutral-800 bg-[#262421] text-neutral-400 hover:text-white"
-						>
-							<RotateCcw class="h-5 w-5" />
-						</Button>
-
-						<Button
 							variant="ghost"
 							size="icon"
 							onclick={nextMove}
@@ -546,22 +556,32 @@
 					</div>
 
 					<!-- Secondary Layer: Utility -->
-					<div class="flex gap-2">
-						<Button
-							variant={showArrows ? 'default' : 'outline'}
-							size="sm"
-							onclick={toggleArrows}
-							class="flex-1 h-9 text-[10px] font-black uppercase tracking-tight border-neutral-800"
-						>
-							<Zap class="mr-2 h-3.5 w-3.5 {showArrows ? 'fill-current' : ''}" />
-							{showArrows ? 'Hide' : 'Show'} Arrows
-						</Button>
+					<div class="space-y-2">
+						<div class="grid grid-cols-2 gap-2">
+							<Button
+								variant="outline"
+								size="sm"
+								onclick={toggleOrientation}
+								class="h-9 text-[10px] font-black uppercase tracking-tight border-neutral-800"
+							>
+								<ArrowUpDown class="mr-2 h-3.5 w-3.5" /> Flip Board
+							</Button>
+							<Button
+								variant={showArrows ? 'default' : 'outline'}
+								size="sm"
+								onclick={toggleArrows}
+								class="h-9 text-[10px] font-black uppercase tracking-tight border-neutral-800"
+							>
+								<Zap class="mr-2 h-3.5 w-3.5 {showArrows ? 'fill-current' : ''}" />
+								{showArrows ? 'Hide' : 'Show'} Arrows
+							</Button>
+						</div>
 						{#if sandboxActive}
 							<Button
 								variant="destructive"
 								size="sm"
 								onclick={exitSandbox}
-								class="flex-1 h-9 text-[10px] font-black uppercase tracking-tight"
+								class="w-full h-9 text-[10px] font-black uppercase tracking-tight"
 							>
 								<Trash2 class="mr-2 h-3.5 w-3.5" /> Exit Sandbox
 							</Button>
@@ -570,7 +590,7 @@
 								variant="outline"
 								size="sm"
 								onclick={enterSandbox}
-								class="flex-1 h-9 text-[10px] font-black uppercase tracking-tight border-neutral-800 hover:bg-white/5"
+								class="w-full h-9 text-[10px] font-black uppercase tracking-tight border-neutral-800 hover:bg-white/5"
 							>
 								<Play class="mr-2 h-3.5 w-3.5" /> Try Moves
 							</Button>
@@ -678,7 +698,7 @@
 		onclick={() => (showMobileAnalysis = false)}
 	>
 		<div
-			class="flex-1 bg-[#1e1c1a] border-t border-neutral-800 rounded-t-3xl p-6 flex flex-col gap-6 overflow-hidden animate-in slide-in-from-bottom-10 duration-500"
+			class="flex-1 bg-[#1e1c1a] border-t border-neutral-800 rounded-t-3xl p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar animate-in slide-in-from-bottom-10 duration-500"
 			onclick={(e) => e.stopPropagation()}
 		>
 			<div class="flex items-center justify-between shrink-0">
@@ -688,10 +708,28 @@
 				</h2>
 				<button
 					onclick={() => (showMobileAnalysis = false)}
+					aria-label="Close"
 					class="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center text-neutral-400 hover:text-white"
 				>
-					<RotateCcw class="h-5 w-5" />
+					<X class="h-5 w-5" />
 				</button>
+			</div>
+
+			<!-- Game Report: accuracy, estimated rating, per-move accuracy map -->
+			<div class="shrink-0">
+				<GameReportCard
+					report={gameReport}
+					{whiteName}
+					{blackName}
+					ratings={moveRatings}
+					{accuracyByPly}
+					{currentIndex}
+					{isAnalyzing}
+					onSelect={(i) => {
+						goToMove(i);
+						showMobileAnalysis = false;
+					}}
+				/>
 			</div>
 
 			<!-- Analysis Card -->
@@ -733,7 +771,7 @@
 							{engineInfo.bestMove}
 						</div>
 						<div class="flex-1 flex gap-1.5 overflow-x-auto custom-scrollbar pb-2">
-							{#each engineInfo.pv.slice(0, 3) as move}
+							{#each engineInfo.pv.slice(0, 3) as move, i (i)}
 								<span
 									class="text-xs font-mono bg-white/5 px-2.5 py-1.5 rounded-md border border-white/10 whitespace-nowrap"
 									>{move}</span
@@ -763,7 +801,7 @@
 				</div>
 				<div class="flex-1 overflow-y-auto custom-scrollbar p-2">
 					<div class="grid grid-cols-12 gap-1">
-						{#each movePairs as pair, i}
+						{#each movePairs as pair, i (i)}
 							{@const idx1 = i * 2 + 1}
 							{@const idx2 = (i + 1) * 2}
 							<div
@@ -776,12 +814,22 @@
 									goToMove(idx1);
 									showMobileAnalysis = false;
 								}}
-								class="col-span-5 px-3 py-2.5 rounded-lg text-xs font-bold {currentIndex === idx1 &&
-								!sandboxActive
+								class="col-span-5 px-3 py-2.5 rounded-lg text-xs font-bold flex items-center justify-between gap-1 {currentIndex ===
+									idx1 && !sandboxActive
 									? 'bg-primary text-primary-foreground shadow-lg'
 									: 'text-neutral-400 hover:bg-white/5'}"
 							>
 								{pair[0]}
+								{#if moveRatings[idx1]}
+									{@const cfg = getRatingIcon(moveRatings[idx1])}
+									{#if cfg}
+										<cfg.icon
+											class="h-3.5 w-3.5 shrink-0 {currentIndex === idx1
+												? 'text-primary-foreground'
+												: cfg.color}"
+										/>
+									{/if}
+								{/if}
 							</button>
 							{#if pair[1]}
 								<button
@@ -789,16 +837,46 @@
 										goToMove(idx2);
 										showMobileAnalysis = false;
 									}}
-									class="col-span-5 px-3 py-2.5 rounded-lg text-xs font-bold {currentIndex ===
+									class="col-span-5 px-3 py-2.5 rounded-lg text-xs font-bold flex items-center justify-between gap-1 {currentIndex ===
 										idx2 && !sandboxActive
 										? 'bg-primary text-primary-foreground shadow-lg'
 										: 'text-neutral-400 hover:bg-white/5'}"
 								>
 									{pair[1]}
+									{#if moveRatings[idx2]}
+										{@const cfg = getRatingIcon(moveRatings[idx2])}
+										{#if cfg}
+											<cfg.icon
+												class="h-3.5 w-3.5 shrink-0 {currentIndex === idx2
+													? 'text-primary-foreground'
+													: cfg.color}"
+											/>
+										{/if}
+									{/if}
 								</button>
+							{:else}
+								<div class="col-span-5"></div>
 							{/if}
 						{/each}
 					</div>
+
+					{#if sandboxActive}
+						<div class="mt-2 border-t border-dashed border-white/10 pt-3 px-3 pb-3">
+							<div
+								class="text-[9px] font-black uppercase text-orange-400 flex items-center gap-2 mb-2 tracking-tighter"
+							>
+								<Ghost class="h-3.5 w-3.5" /> Variation Tree
+							</div>
+							<div class="flex flex-wrap gap-1.5">
+								{#each sandboxHistory as move, i (i)}
+									<span
+										class="px-2 py-1 bg-orange-400/10 text-orange-400 rounded-sm text-[10px] font-black font-mono border border-orange-400/20"
+										>{move}</span
+									>
+								{/each}
+							</div>
+						</div>
+					{/if}
 				</div>
 			</div>
 
@@ -812,7 +890,7 @@
 						showMobileAnalysis = false;
 					}}
 				>
-					<RotateCcw class="mr-2 h-4 w-4" /> Flip Board
+					<ArrowUpDown class="mr-2 h-4 w-4" /> Flip Board
 				</Button>
 				<Button
 					variant={showArrows ? 'default' : 'outline'}

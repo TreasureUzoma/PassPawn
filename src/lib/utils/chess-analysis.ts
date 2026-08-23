@@ -11,15 +11,33 @@ export type MoveRating =
 	| 'Mistake'
 	| 'Blunder';
 
+export interface PlayerReport {
+	/** 0-100, lichess-style "how close to the engine's evaluation" score. */
+	accuracy: number;
+	/** Average centipawn loss (in pawns), excluding book moves. */
+	acpl: number;
+	/** Rough Elo-ish estimate derived from acpl. Not an official rating - a ballpark. */
+	estimatedRating: number;
+	moveCounts: Partial<Record<MoveRating, number>>;
+}
+
+export interface GameReport {
+	white: PlayerReport;
+	black: PlayerReport;
+}
+
 export interface AnalysisResult {
 	/** White-perspective evaluation (pawns) at each ply, index 0 = starting position. */
 	evaluations: number[];
 	/** ratings[i] = quality of the move that produced fens[i]. ratings[0] is always null. */
 	ratings: (MoveRating | null)[];
+	/** accuracyByPly[i] = accuracy (0-100) of the move that produced fens[i]. null for ply 0 and book moves. */
+	accuracyByPly: (number | null)[];
+	report: GameReport;
 }
 
 const MATE_SCORE = 20; // pawns, stand-in for "forced mate" so comparisons stay sane
-const MOVETIME_MS = 300;
+const MOVETIME_MS = 600; // more search time per position = fewer bogus "blunders"
 const BOOK_MAX_PLY = 10; // only look for book moves in the first N plies
 
 function isBookMove(sanMoves: string[], plyIndex: number): boolean {
@@ -118,6 +136,49 @@ function isSacrifice(fenBefore: string, uciMove: string): boolean {
 	}
 }
 
+/** Converts a white-perspective eval (pawns) into White's win probability (0-100). */
+function winPercent(evalWhite: number): number {
+	if (evalWhite >= MATE_SCORE) return 100;
+	if (evalWhite <= -MATE_SCORE) return 0;
+	const cp = evalWhite * 100;
+	return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+}
+
+/** Lichess's move-accuracy curve: bigger win% swings decay accuracy fast, small swings barely dent it. */
+function accuracyFromWinPercentLoss(winPercentLoss: number): number {
+	const acc = 103.1668 * Math.exp(-0.04354 * winPercentLoss) - 3.1669;
+	return Math.max(0, Math.min(100, acc));
+}
+
+// Rough ACPL (pawns) -> Elo anchors. This is a ballpark heuristic, not a real
+// rating formula - there's no substitute for actually playing rated games.
+const RATING_ANCHORS: [acpl: number, rating: number][] = [
+	[0, 2900],
+	[0.1, 2500],
+	[0.2, 2200],
+	[0.35, 2000],
+	[0.5, 1800],
+	[0.75, 1600],
+	[1.0, 1400],
+	[1.5, 1200],
+	[2.0, 1000],
+	[3.0, 800],
+	[5.0, 500]
+];
+
+function estimateRating(acpl: number): number {
+	if (acpl <= RATING_ANCHORS[0][0]) return RATING_ANCHORS[0][1];
+	for (let i = 1; i < RATING_ANCHORS.length; i++) {
+		const [prevAcpl, prevRating] = RATING_ANCHORS[i - 1];
+		const [anchorAcpl, anchorRating] = RATING_ANCHORS[i];
+		if (acpl <= anchorAcpl) {
+			const t = (acpl - prevAcpl) / (anchorAcpl - prevAcpl);
+			return Math.round((prevRating + t * (anchorRating - prevRating)) / 25) * 25;
+		}
+	}
+	return RATING_ANCHORS[RATING_ANCHORS.length - 1][1];
+}
+
 /**
  * Runs a full-game engine pass and classifies every move played. Spins up its
  * own Stockfish worker so it doesn't fight with any "live" analysis a board
@@ -139,6 +200,9 @@ export async function analyzeGame(
 		}
 		worker.addEventListener('message', onReady);
 		worker.postMessage('uci');
+		// A bigger hash table trades memory for meaningfully stronger, more
+		// consistent evaluations across a whole game.
+		worker.postMessage('setoption name Hash value 128');
 		worker.postMessage('isready');
 	});
 
@@ -168,42 +232,82 @@ export async function analyzeGame(
 	}
 
 	const ratings: (MoveRating | null)[] = [null];
+	const accuracyByPly: (number | null)[] = [null];
+
+	const totals = {
+		w: { acplSum: 0, acplCount: 0, accSum: 0, accCount: 0, moveCounts: {} as Partial<Record<MoveRating, number>> },
+		b: { acplSum: 0, acplCount: 0, accSum: 0, accCount: 0, moveCounts: {} as Partial<Record<MoveRating, number>> }
+	};
 
 	for (let i = 1; i < total; i++) {
 		const fenBefore = fens[i - 1];
 		const moverIsWhite = fenBefore.split(' ')[1] !== 'b';
+		const mover = moverIsWhite ? totals.w : totals.b;
 		const evalBefore = evaluations[i - 1];
 		const evalAfter = evaluations[i];
 
 		// Centipawn loss from the mover's point of view (0 or positive = no loss).
 		const loss = Math.max(0, moverIsWhite ? evalBefore - evalAfter : evalAfter - evalBefore);
 
+		// Win% swing, from the mover's own point of view, feeds the accuracy curve.
+		const wpBefore = moverIsWhite ? winPercent(evalBefore) : 100 - winPercent(evalBefore);
+		const wpAfter = moverIsWhite ? winPercent(evalAfter) : 100 - winPercent(evalAfter);
+		const winPercentLoss = Math.max(0, wpBefore - wpAfter);
+		const accuracy = accuracyFromWinPercentLoss(winPercentLoss);
+
+		let rating: MoveRating;
+
 		if (isBookMove(sanMoves, i - 1)) {
-			ratings.push('Book');
-			continue;
+			rating = 'Book';
+		} else {
+			const playedSan = sanMoves[i - 1];
+			const bestUci = bestMoves[i - 1];
+			const bestSan = bestUci ? uciToSan(fenBefore, bestUci) : null;
+			const isBest = !!bestSan && bestSan === playedSan;
+
+			if (isBest && loss < 0.3) {
+				const moverEvalAfter = moverIsWhite ? evalAfter : -evalAfter;
+				rating =
+					loss < 0.1 && moverEvalAfter > -0.5 && isSacrifice(fenBefore, bestUci!)
+						? 'Brilliant'
+						: 'Best';
+			} else if (loss < 0.2) rating = 'Excellent';
+			else if (loss < 0.5) rating = 'Good';
+			else if (loss < 1.0) rating = 'Inaccuracy';
+			else if (loss < 2.0) rating = 'Mistake';
+			else rating = 'Blunder';
 		}
 
-		const playedSan = sanMoves[i - 1];
-		const bestUci = bestMoves[i - 1];
-		const bestSan = bestUci ? uciToSan(fenBefore, bestUci) : null;
-		const isBest = !!bestSan && bestSan === playedSan;
+		ratings.push(rating);
+		mover.moveCounts[rating] = (mover.moveCounts[rating] || 0) + 1;
 
-		if (isBest && loss < 0.3) {
-			const moverEvalAfter = moverIsWhite ? evalAfter : -evalAfter;
-			if (loss < 0.1 && moverEvalAfter > -0.5 && isSacrifice(fenBefore, bestUci!)) {
-				ratings.push('Brilliant');
-			} else {
-				ratings.push('Best');
-			}
-			continue;
+		// Book moves are "free" theory - they don't count for or against accuracy/ACPL.
+		if (rating === 'Book') {
+			accuracyByPly.push(null);
+		} else {
+			accuracyByPly.push(accuracy);
+			mover.acplSum += loss;
+			mover.acplCount++;
+			mover.accSum += accuracy;
+			mover.accCount++;
 		}
-
-		if (loss < 0.2) ratings.push('Excellent');
-		else if (loss < 0.5) ratings.push('Good');
-		else if (loss < 1.0) ratings.push('Inaccuracy');
-		else if (loss < 2.0) ratings.push('Mistake');
-		else ratings.push('Blunder');
 	}
 
-	return { evaluations, ratings };
+	function buildPlayerReport(t: (typeof totals)['w']): PlayerReport {
+		const acpl = t.acplCount > 0 ? t.acplSum / t.acplCount : 0;
+		const accuracy = t.accCount > 0 ? t.accSum / t.accCount : 100;
+		return {
+			accuracy: Math.round(accuracy * 10) / 10,
+			acpl: Math.round(acpl * 100) / 100,
+			estimatedRating: t.acplCount > 0 ? estimateRating(acpl) : 0,
+			moveCounts: t.moveCounts
+		};
+	}
+
+	const report: GameReport = {
+		white: buildPlayerReport(totals.w),
+		black: buildPlayerReport(totals.b)
+	};
+
+	return { evaluations, ratings, accuracyByPly, report };
 }
