@@ -166,7 +166,6 @@
 	} | null = null;
 
 	let possibleMoves: string[] = [];
-	let capturedPieces: { w: string[]; b: string[] } = { w: [], b: [] };
 
 	let boardElement: HTMLElement;
 
@@ -305,7 +304,6 @@
 				skipPieceTransition = false;
 			});
 		}
-		capturedPieces = getCapturedPieces();
 		isCheckmate = chess.isCheckmate();
 		isCheck = chess.inCheck();
 		isDraw = chess.isDraw();
@@ -340,24 +338,6 @@
 		} else {
 			evaluation = getMaterialEvaluation();
 		}
-	}
-
-	function getCapturedPieces() {
-		const history = chess.history({ verbose: true });
-		const captured = { w: [] as string[], b: [] as string[] };
-
-		for (const move of history) {
-			if (move.captured) {
-				const capturedColor = move.color === 'w' ? 'b' : 'w';
-				captured[capturedColor].push(move.captured);
-			}
-		}
-
-		const order = ['p', 'n', 'b', 'r', 'q'];
-		captured.w.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-		captured.b.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-
-		return captured;
 	}
 
 	function handleMouseDown(
@@ -524,22 +504,6 @@
 		<!-- Eval Bar (Mobile) -->
 		<div class="w-full h-6 block sm:hidden">
 			<EvalBar {evaluation} loading={!hasEvaluated} orientation="horizontal" />
-		</div>
-
-		<!-- Captured Pieces (Top - Opponent) -->
-		<div
-			class="flex h-10 w-full items-center gap-1.5 rounded-lg bg-neutral-900/50 border border-white/5 px-3 min-h-[40px] shadow-inner"
-		>
-			{#each orientation === 'white' ? capturedPieces.w : capturedPieces.b as piece, i (i + piece)}
-				<div class="relative h-7 w-7 transition-transform hover:scale-110">
-					<Icon
-						name={getPieceName(piece)}
-						color={orientation === 'white' ? 'w' : 'b'}
-						size="100%"
-						class="drop-shadow-sm filter brightness-110"
-					/>
-				</div>
-			{/each}
 		</div>
 
 		<div
@@ -730,22 +694,6 @@
 					/>
 				</div>
 			{/if}
-		</div>
-
-		<!-- Captured Pieces (Bottom - Me) -->
-		<div
-			class="flex h-10 w-full items-center gap-1.5 rounded-lg bg-neutral-900/50 border border-white/5 px-3 min-h-[40px] shadow-inner"
-		>
-			{#each orientation === 'white' ? capturedPieces.b : capturedPieces.w as piece, i (i + piece)}
-				<div class="relative h-7 w-7 transition-transform hover:scale-110">
-					<Icon
-						name={getPieceName(piece)}
-						color={orientation === 'white' ? 'b' : 'w'}
-						size="100%"
-						class="drop-shadow-sm filter brightness-110"
-					/>
-				</div>
-			{/each}
 		</div>
 	</div>
 </div>

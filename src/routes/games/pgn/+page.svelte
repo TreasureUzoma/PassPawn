@@ -237,6 +237,20 @@
 <div
 	class="min-h-screen lg:h-screen w-screen flex flex-col bg-[#161512] text-neutral-200 lg:overflow-hidden font-sans"
 >
+	<!-- Mobile Top Bar: title + way back out of the review -->
+	<div
+		class="lg:hidden shrink-0 flex items-center justify-between px-4 py-3 border-b border-neutral-800 bg-[#1e1c1a]"
+	>
+		<h1 class="text-xs font-black uppercase tracking-widest text-neutral-400">Game Review</h1>
+		<button
+			onclick={() => goto(resolve('/'))}
+			aria-label="Close review"
+			class="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center text-neutral-400 hover:text-white"
+		>
+			<X class="h-4 w-4" />
+		</button>
+	</div>
+
 	<!-- Main Area: Eval Bar | Board | Sidebar -->
 	<div class="flex-1 flex overflow-hidden p-2 sm:p-4 gap-2 sm:gap-4 justify-center">
 		<!-- 2. Board Container (Maximized) -->
@@ -245,7 +259,7 @@
 		>
 			<!-- Top Player Name -->
 			<div
-				class="w-full max-w-3xl lg:max-w-[calc(100vh-16rem)] mb-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
+				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mb-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
 			>
 				<div
 					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1 sm:py-2 flex items-center justify-between shadow-xl"
@@ -268,7 +282,7 @@
 
 			<!-- Chess Board -->
 			<div
-				class="w-full max-w-3xl lg:max-w-[calc(100vh-16rem)] shrink-0 transition-all duration-300"
+				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] shrink-0 transition-all duration-300"
 			>
 				<ChessBoard
 					fen={sandboxActive ? sandboxFen : fens[currentIndex]}
@@ -282,7 +296,7 @@
 
 			<!-- Bottom Player Name -->
 			<div
-				class="w-full max-w-3xl lg:max-w-[calc(100vh-16rem)] mt-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
+				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mt-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
 			>
 				<div
 					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1 sm:py-2 flex items-center justify-between shadow-xl"
@@ -790,16 +804,14 @@
 			</div>
 
 			<!-- Move List -->
-			<div
-				class="flex-1 border border-neutral-800 bg-[#161512] rounded-2xl overflow-hidden flex flex-col"
-			>
+			<div class="shrink-0 border border-neutral-800 bg-[#161512] rounded-2xl overflow-hidden flex flex-col">
 				<div
 					class="bg-white/5 px-4 py-3 border-b border-neutral-800 flex items-center justify-between"
 				>
 					<h3 class="text-xs font-black uppercase text-neutral-400">Move List</h3>
 					<span class="text-[10px] font-mono text-neutral-600">{history.length} moves</span>
 				</div>
-				<div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+				<div class="p-2">
 					<div class="grid grid-cols-12 gap-1">
 						{#each movePairs as pair, i (i)}
 							{@const idx1 = i * 2 + 1}
