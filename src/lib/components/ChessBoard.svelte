@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy, createEventDispatcher } from 'svelte';
+	import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
 	import { Trophy } from 'lucide-svelte';
 	import { Handshake } from 'lucide-svelte';
 	import { Chess } from 'chess.js';
@@ -38,9 +38,33 @@
 
 	let stockfish: Worker | null = null;
 
-	onMount(() => {
-		updateGameState();
+	// Requests are serialized: only one `go` is ever in flight, and the sign of
+	// every score is resolved against the position that was actually sent, not
+	// whatever `turn` happens to be by the time the engine replies. Without this
+	// a rapid sequence of moves could attribute an eval/best-move to the wrong
+	// position and briefly show nonsense (e.g. a "blunder" that never happened).
+	let searching = false;
+	let activeTurn: 'w' | 'b' = 'w';
+	let queuedFen: string | null = null;
+	let queuedTurn: 'w' | 'b' = 'w';
 
+	function requestEngineEval(fenToEval: string, turnToEval: 'w' | 'b') {
+		if (!stockfish) return;
+
+		if (searching) {
+			queuedFen = fenToEval;
+			queuedTurn = turnToEval;
+			stockfish.postMessage('stop');
+			return;
+		}
+
+		searching = true;
+		activeTurn = turnToEval;
+		stockfish.postMessage(`position fen ${fenToEval}`);
+		stockfish.postMessage('go depth 15');
+	}
+
+	onMount(() => {
 		try {
 			stockfish = new Worker('/stockfish.js');
 
@@ -50,9 +74,18 @@
 
 				if (line.startsWith('bestmove')) {
 					const match = line.match(/bestmove\s+(\S+)/);
-					if (match) {
+					if (match && match[1] !== '(none)') {
 						dispatch('engine', { evaluation, bestMove: match[1], pv: [] });
 					}
+
+					searching = false;
+					if (queuedFen) {
+						const nextFen = queuedFen;
+						const nextTurn = queuedTurn;
+						queuedFen = null;
+						requestEngineEval(nextFen, nextTurn);
+					}
+					return;
 				}
 
 				if (line.startsWith('info') && (line.includes('score cp') || line.includes('score mate'))) {
@@ -65,12 +98,12 @@
 
 					if (scoreCpMatch) {
 						let cp = parseInt(scoreCpMatch[1], 10);
-						if (turn === 'b') cp = -cp;
+						if (activeTurn === 'b') cp = -cp;
 						currentEval = cp / 100;
 					} else if (scoreMateMatch) {
 						const mateIn = parseInt(scoreMateMatch[1], 10);
 						let mateScore = mateIn;
-						if (turn === 'b') mateScore = -mateScore;
+						if (activeTurn === 'b') mateScore = -mateScore;
 						currentEval = mateScore > 0 ? Infinity : -Infinity;
 					}
 
@@ -88,9 +121,10 @@
 			// stockfish.postMessage('ucinewgame'); // Doing this on load might reset generic engine state?
 		} catch (e) {
 			console.error('Stockfish init failed', e);
-			// Fallback
-			evaluation = getMaterialEvaluation();
+			stockfish = null;
 		}
+
+		updateGameState();
 	});
 
 	onDestroy(() => {
@@ -117,8 +151,113 @@
 
 	let boardElement: HTMLElement;
 
+	// Animated piece layer: each piece keeps a stable id across renders so the
+	// browser can transition its position (instead of the piece just popping
+	// into its new square, which is what made moves feel abrupt before).
+	interface PieceState {
+		id: number;
+		type: string;
+		color: 'w' | 'b';
+		row: number;
+		col: number;
+	}
+	let pieces: PieceState[] = [];
+	let pieceIdCounter = 0;
+	let skipPieceTransition = true; // true on mount so the initial board doesn't "slide in"
+
+	function squareToRC(square: string): [number, number] {
+		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+		const row = 8 - parseInt(square[1], 10);
+		const col = files.indexOf(square[0]);
+		return [row, col];
+	}
+
+	function syncPieces(newBoard: ReturnType<Chess['board']>) {
+		const oldBySquare = new Map<string, PieceState>();
+		for (const p of pieces) {
+			oldBySquare.set(getSquare(p.row, p.col), p);
+		}
+
+		const newBySquare = new Map<string, { type: string; color: 'w' | 'b' }>();
+		for (let r = 0; r < 8; r++) {
+			for (let c = 0; c < 8; c++) {
+				const p = newBoard[r][c];
+				if (p) newBySquare.set(getSquare(r, c), { type: p.type, color: p.color as 'w' | 'b' });
+			}
+		}
+
+		const nextPieces: PieceState[] = [];
+		const usedOldIds = new Set<number>();
+		const unmatchedNewSquares: string[] = [];
+
+		// Squares that already hold the exact same piece: nothing to animate.
+		for (const [square, np] of newBySquare) {
+			const op = oldBySquare.get(square);
+			if (op && op.type === np.type && op.color === np.color) {
+				nextPieces.push(op);
+				usedOldIds.add(op.id);
+			} else {
+				unmatchedNewSquares.push(square);
+			}
+		}
+
+		const remainingOld = pieces.filter((p) => !usedOldIds.has(p.id));
+
+		// Match every remaining old piece to the closest plausible new square
+		// (same colour; prefer same type, falling back for promotions).
+		for (const square of unmatchedNewSquares) {
+			const target = newBySquare.get(square)!;
+			const [tr, tc] = squareToRC(square);
+
+			let bestIdx = -1;
+			let bestScore = Infinity;
+			remainingOld.forEach((op, idx) => {
+				if (usedOldIds.has(op.id) || op.color !== target.color) return;
+				const dist = Math.abs(op.row - tr) + Math.abs(op.col - tc);
+				const score = (op.type === target.type ? 0 : 100) + dist;
+				if (score < bestScore) {
+					bestScore = score;
+					bestIdx = idx;
+				}
+			});
+
+			if (bestIdx >= 0) {
+				const op = remainingOld[bestIdx];
+				usedOldIds.add(op.id);
+				nextPieces.push({ id: op.id, type: target.type, color: target.color, row: tr, col: tc });
+			} else {
+				nextPieces.push({
+					id: pieceIdCounter++,
+					type: target.type,
+					color: target.color,
+					row: tr,
+					col: tc
+				});
+			}
+		}
+
+		const changedCount = nextPieces.reduce((count, np) => {
+			const op = pieces.find((p) => p.id === np.id);
+			return !op || op.row !== np.row || op.col !== np.col ? count + 1 : count;
+		}, 0);
+
+		// A normal move (including castling/en passant) shifts at most a
+		// couple of pieces. Anything bigger means we jumped somewhere in the
+		// move list, so snap instantly instead of sliding every piece around.
+		skipPieceTransition = changedCount > 2 || pieces.length === 0;
+		pieces = nextPieces;
+	}
+
 	function updateGameState() {
 		board = chess.board();
+		syncPieces(board);
+		if (skipPieceTransition) {
+			// Let this render apply positions with transitions disabled, then
+			// re-enable them for whatever move comes next.
+			tick().then(() => {
+				skipPieceTransition = false;
+			});
+		}
 		capturedPieces = getCapturedPieces();
 		isCheckmate = chess.isCheckmate();
 		isCheck = chess.inCheck();
@@ -150,8 +289,7 @@
 
 		// Update Stockfish
 		if (stockfish) {
-			stockfish.postMessage(`position fen ${chess.fen()}`);
-			stockfish.postMessage('go depth 15');
+			requestEngineEval(chess.fen(), turn as 'w' | 'b');
 		} else {
 			evaluation = getMaterialEvaluation();
 		}
@@ -383,8 +521,6 @@
 						{@const isDark = (row + col) % 2 === 1}
 						{@const square = getSquare(row, col)}
 						{@const piece = board[row][col]}
-
-						{@const isBeingDragged = draggedPiece?.row === row && draggedPiece?.col === col}
 						{@const isPossibleMove = possibleMoves.includes(square)}
 						{@const isCaptureMove = isPossibleMove && piece !== null}
 						{@const isKingInDanger = square === kingSquare}
@@ -396,6 +532,7 @@
                             {isDark ? 'bg-[#769656] text-[#eeeed2]' : 'bg-[#eeeed2] text-[#769656]'}
                             {isSelected ? 'bg-yellow-200/50 ring-inset ring-4 ring-yellow-400' : ''}
                             {isKingInDanger ? 'ring-inset ring-4 ring-red-500 bg-red-400/50' : ''}
+                            {piece ? 'cursor-grab active:cursor-grabbing' : ''}
                             "
 							data-square={square}
 							onmousedown={(e) => handleMouseDown(e, row, col, piece)}
@@ -410,22 +547,6 @@
 								<span class="absolute bottom-0 right-1 text-[0.65rem] font-bold opacity-80">
 									{String.fromCharCode(97 + col)}
 								</span>
-							{/if}
-
-							<!-- Piece -->
-							{#if piece && !isBeingDragged}
-								<div
-									class="h-[80%] w-[80%] cursor-grab active:cursor-grabbing {isCaptureMove
-										? 'opacity-80'
-										: ''} z-10"
-								>
-									<Icon
-										name={getPieceName(piece.type)}
-										color={piece.color}
-										size="107%"
-										class="drop-shadow-lg filter"
-									/>
-								</div>
 							{/if}
 
 							<!-- Possible Move Indicators -->
@@ -455,6 +576,33 @@
 							{/if}
 						</div>
 					{/each}
+				{/each}
+			</div>
+
+			<!-- Animated Piece Layer -->
+			<div class="absolute inset-0 z-10 pointer-events-none">
+				{#each pieces as piece (piece.id)}
+					{@const square = getSquare(piece.row, piece.col)}
+					{@const isDragged = draggedPiece?.square === square}
+					{@const isCaptureTarget = possibleMoves.includes(square)}
+					{@const displayRow = orientation === 'white' ? piece.row : 7 - piece.row}
+					{@const displayCol = orientation === 'white' ? piece.col : 7 - piece.col}
+					<div
+						class="absolute top-0 left-0 h-[12.5%] w-[12.5%] flex items-center justify-center {skipPieceTransition
+							? ''
+							: 'transition-transform duration-200 ease-out'}"
+						style="transform: translate({displayCol * 100}%, {displayRow *
+							100}%); opacity: {isDragged ? 0 : 1};"
+					>
+						<div class="h-[80%] w-[80%] {isCaptureTarget ? 'opacity-80' : ''}">
+							<Icon
+								name={getPieceName(piece.type)}
+								color={piece.color}
+								size="107%"
+								class="drop-shadow-lg filter"
+							/>
+						</div>
+					</div>
 				{/each}
 			</div>
 

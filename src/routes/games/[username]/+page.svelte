@@ -11,19 +11,14 @@
 		PlusCircle,
 		MinusCircle,
 		CircleSlash,
-		Clock
+		Clock,
+		Search,
+		X
 	} from 'lucide-svelte';
+	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
 
 	let { data }: { data: PageData } = $props();
-
-	// ... previous interfaces ...
-	interface PlayerProfile {
-		avatar?: string;
-		username: string;
-		name?: string;
-		followers: number;
-		country?: string;
-	}
 
 	interface GamePlayer {
 		username: string;
@@ -46,15 +41,6 @@
 	interface ArchiveResponse {
 		archives: string[];
 	}
-
-	const profileQuery = createQuery(() => ({
-		queryKey: ['player', data.username],
-		queryFn: async () => {
-			const res = await fetch(`https://api.chess.com/pub/player/${data.username}`);
-			if (!res.ok) throw new Error('Failed to fetch profile');
-			return res.json() as Promise<PlayerProfile>;
-		}
-	}));
 
 	const archivesQuery = createQuery(() => ({
 		queryKey: ['archives', data.username],
@@ -96,12 +82,17 @@
 		return { type: 'draw', label: 'Draw', color: 'text-muted-foreground', icon: CircleSlash };
 	}
 
+	function getOpponent(game: Game) {
+		const isWhite = game.white.username.toLowerCase() === data.username.toLowerCase();
+		return isWhite ? game.black : game.white;
+	}
+
 	function getGameTypeIcon(timeClass: string) {
 		switch (timeClass) {
 			case 'blitz':
 				return Zap;
 			case 'bullet':
-				return Zap; // Wait, I'll use Zap for both
+				return Zap;
 			case 'rapid':
 				return Timer;
 			case 'daily':
@@ -116,57 +107,176 @@
 		if (!ts) return 'Unknown';
 		return new Date(ts * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 	}
+
+	// --- Search & filters ---
+	let searchQuery = $state('');
+	let timeClassFilter = $state<'all' | 'bullet' | 'blitz' | 'rapid' | 'daily'>('all');
+	let resultFilter = $state<'all' | 'win' | 'loss' | 'draw'>('all');
+	let visibleCount = $state(25);
+
+	const timeClassOptions: { value: typeof timeClassFilter; label: string }[] = [
+		{ value: 'all', label: 'All' },
+		{ value: 'bullet', label: 'Bullet' },
+		{ value: 'blitz', label: 'Blitz' },
+		{ value: 'rapid', label: 'Rapid' },
+		{ value: 'daily', label: 'Daily' }
+	];
+
+	const resultOptions: { value: typeof resultFilter; label: string }[] = [
+		{ value: 'all', label: 'All' },
+		{ value: 'win', label: 'Wins' },
+		{ value: 'loss', label: 'Losses' },
+		{ value: 'draw', label: 'Draws' }
+	];
+
+	let sortedGames = $derived(
+		[...(allGamesQuery.data ?? [])].sort((a, b) => {
+			const timeA = a.end_time || a.last_activity || 0;
+			const timeB = b.end_time || b.last_activity || 0;
+			return timeB - timeA;
+		})
+	);
+
+	let filteredGames = $derived.by(() => {
+		const q = searchQuery.trim().toLowerCase();
+		return sortedGames.filter((game) => {
+			if (timeClassFilter !== 'all' && game.time_class !== timeClassFilter) return false;
+			if (resultFilter !== 'all' && getGameResult(game).type !== resultFilter) return false;
+			if (q && !getOpponent(game).username.toLowerCase().includes(q)) return false;
+			return true;
+		});
+	});
+
+	let visibleGames = $derived(filteredGames.slice(0, visibleCount));
+	let hasActiveFilters = $derived(
+		searchQuery.trim() !== '' || timeClassFilter !== 'all' || resultFilter !== 'all'
+	);
+
+	// Reset pagination whenever the result set changes shape
+	$effect(() => {
+		searchQuery;
+		timeClassFilter;
+		resultFilter;
+		visibleCount = 25;
+	});
+
+	function clearFilters() {
+		searchQuery = '';
+		timeClassFilter = 'all';
+		resultFilter = 'all';
+	}
 </script>
 
 <div class="container mx-auto max-w-4xl space-y-6 p-4">
-	{#if profileQuery.isPending}
-		<div class="flex animate-pulse items-center gap-4 p-6 border rounded-xl bg-card">
-			<div class="h-20 w-20 rounded-full bg-muted"></div>
-			<div class="space-y-2">
-				<div class="h-6 w-40 rounded bg-muted"></div>
-				<div class="h-4 w-20 rounded bg-muted"></div>
-			</div>
-		</div>
-	{:else if profileQuery.data}
-		<div
-			class="flex flex-col sm:flex-row items-center sm:items-start gap-6 rounded-2xl border bg-card p-6 shadow-sm relative overflow-hidden"
-		>
-			<!-- Decoration -->
-			<div class="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl"></div>
+	<div
+		class="flex flex-col sm:flex-row items-center sm:items-start gap-6 rounded-2xl border bg-card p-6 shadow-sm relative overflow-hidden"
+	>
+		<!-- Decoration -->
+		<div class="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl"></div>
 
-			<img
-				src={profileQuery.data.avatar ?? `https://avatar.idolo.dev/${data.username}`}
-				alt={profileQuery.data.username}
-				class="h-24 w-24 rounded-full border-4 border-background shadow-xl object-cover"
-			/>
-			<div class="text-center sm:text-left">
-				<h1 class="text-4xl font-black tracking-tight">{profileQuery.data.username}</h1>
-				<div
-					class="mt-2 flex flex-wrap justify-center sm:justify-start gap-4 text-sm text-muted-foreground"
-				>
+		<img
+			src={data.profile.avatar ?? `https://avatar.idolo.dev/${data.username}`}
+			alt={data.profile.username}
+			class="h-24 w-24 shrink-0 rounded-full border-4 border-background shadow-xl object-cover"
+		/>
+		<div class="min-w-0 w-full text-center sm:text-left">
+			<h1
+				class="truncate text-2xl sm:text-4xl font-black tracking-tight"
+				title={data.profile.username}
+			>
+				{data.profile.username}
+			</h1>
+			<div
+				class="mt-2 flex flex-wrap justify-center sm:justify-start gap-4 text-sm text-muted-foreground"
+			>
+				<span class="flex items-center gap-1.5 font-medium">
+					<Users class="h-4 w-4 shrink-0" />
+					{data.profile.followers.toLocaleString()} followers
+				</span>
+				{#if data.profile.country}
 					<span class="flex items-center gap-1.5 font-medium">
-						<Users class="h-4 w-4" />
-						{profileQuery.data.followers.toLocaleString()} followers
+						<span class="opacity-50">#</span>
+						{data.profile.country.split('/').pop()}
 					</span>
-					{#if profileQuery.data.country}
-						<span class="flex items-center gap-1.5 font-medium">
-							<span class="opacity-50">#</span>
-							{profileQuery.data.country.split('/').pop()}
-						</span>
-					{/if}
-				</div>
+				{/if}
 			</div>
 		</div>
-	{/if}
+	</div>
 
 	<div class="space-y-4">
-		<div class="flex items-center justify-between px-2">
+		<div class="flex flex-wrap items-center justify-between gap-2 px-2">
 			<h2 class="text-xl font-bold flex items-center gap-2">
-				<Trophy class="h-5 w-5 text-yellow-500" />
+				<Trophy class="h-5 w-5 text-yellow-500 shrink-0" />
 				Recent Games
 			</h2>
 			<div class="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-1 rounded border">
-				{allGamesQuery.data?.length || 0} GAMES
+				{#if hasActiveFilters}
+					{filteredGames.length} / {allGamesQuery.data?.length || 0} GAMES
+				{:else}
+					{allGamesQuery.data?.length || 0} GAMES
+				{/if}
+			</div>
+		</div>
+
+		<!-- Search & Filters -->
+		<div class="flex flex-col gap-2.5 rounded-xl border bg-card p-3">
+			<div class="relative">
+				<Search
+					class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+				/>
+				<Input
+					type="text"
+					placeholder="Search by opponent..."
+					bind:value={searchQuery}
+					class="pl-9 pr-9"
+				/>
+				{#if searchQuery}
+					<button
+						type="button"
+						onclick={() => (searchQuery = '')}
+						class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+						aria-label="Clear search"
+					>
+						<X class="h-4 w-4" />
+					</button>
+				{/if}
+			</div>
+
+			<div class="flex flex-wrap items-center gap-1.5">
+				{#each timeClassOptions as opt}
+					<button
+						type="button"
+						onclick={() => (timeClassFilter = opt.value)}
+						class="rounded-full border px-3 py-1 text-xs font-semibold transition-colors {timeClassFilter ===
+						opt.value
+							? 'bg-primary text-primary-foreground border-primary'
+							: 'bg-transparent text-muted-foreground border-border hover:bg-muted'}"
+					>
+						{opt.label}
+					</button>
+				{/each}
+				<span class="mx-1 h-4 w-px bg-border hidden sm:block"></span>
+				{#each resultOptions as opt}
+					<button
+						type="button"
+						onclick={() => (resultFilter = opt.value)}
+						class="rounded-full border px-3 py-1 text-xs font-semibold transition-colors {resultFilter ===
+						opt.value
+							? 'bg-primary text-primary-foreground border-primary'
+							: 'bg-transparent text-muted-foreground border-border hover:bg-muted'}"
+					>
+						{opt.label}
+					</button>
+				{/each}
+				{#if hasActiveFilters}
+					<button
+						type="button"
+						onclick={clearFilters}
+						class="ml-auto text-xs font-semibold text-muted-foreground hover:text-foreground underline underline-offset-2"
+					>
+						Clear filters
+					</button>
+				{/if}
 			</div>
 		</div>
 
@@ -185,13 +295,7 @@
 			</div>
 		{:else}
 			<div class="grid gap-3">
-				{#each (allGamesQuery.data ?? [])
-					.sort((a, b) => {
-						const timeA = a.end_time || a.last_activity || 0;
-						const timeB = b.end_time || b.last_activity || 0;
-						return timeB - timeA;
-					})
-					.slice(0, 50) as game}
+				{#each visibleGames as game}
 					{@const result = getGameResult(game)}
 					{@const TypeIcon = getGameTypeIcon(game.time_class)}
 					<a
@@ -208,13 +312,17 @@
 						<!-- Center: Players -->
 						<div class="flex-1 min-w-0">
 							<div class="flex flex-col gap-0.5">
-								<div class="flex items-center gap-1.5 text-sm sm:text-base font-bold min-w-0">
-									<span class="truncate">{game.white.username}</span>
-									<span class="text-[10px] opacity-40 font-mono shrink-0">VS</span>
-									<span class="truncate">{game.black.username}</span>
+								<div
+									class="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 text-sm sm:text-base font-bold"
+								>
+									<span class="truncate text-right sm:text-left" title={game.white.username}
+										>{game.white.username}</span
+									>
+									<span class="text-[10px] opacity-40 font-mono shrink-0 px-0.5">VS</span>
+									<span class="truncate" title={game.black.username}>{game.black.username}</span>
 								</div>
 								<div
-									class="mt-0.5 flex items-center flex-wrap gap-x-2 gap-y-1 text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider"
+									class="mt-0.5 flex items-center flex-wrap justify-center sm:justify-start gap-x-2 gap-y-1 text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider"
 								>
 									<span>{game.time_class}</span>
 									<span class="opacity-30">•</span>
@@ -242,11 +350,30 @@
 					</a>
 				{/each}
 
+				{#if filteredGames.length > visibleGames.length}
+					<Button variant="outline" class="w-full" onclick={() => (visibleCount += 25)}>
+						Load more ({filteredGames.length - visibleGames.length} remaining)
+					</Button>
+				{/if}
+
 				{#if allGamesQuery.data?.length === 0}
 					<div
 						class="py-12 text-center text-muted-foreground bg-muted/20 rounded-xl border border-dashed"
 					>
 						<p class="font-medium italic">No recent games found for this user.</p>
+					</div>
+				{:else if filteredGames.length === 0}
+					<div
+						class="py-12 text-center text-muted-foreground bg-muted/20 rounded-xl border border-dashed space-y-2"
+					>
+						<p class="font-medium italic">No games match your filters.</p>
+						<button
+							type="button"
+							onclick={clearFilters}
+							class="text-xs font-semibold text-primary underline underline-offset-2"
+						>
+							Clear filters
+						</button>
 					</div>
 				{/if}
 			</div>

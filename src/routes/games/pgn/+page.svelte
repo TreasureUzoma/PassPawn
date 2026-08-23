@@ -5,6 +5,7 @@
 	import ChessBoard from '$lib/components/ChessBoard.svelte';
 	import EvalBar from '$lib/components/EvalBar.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import { analyzeGame } from '$lib/utils/chess-analysis';
 	import {
 		ChevronLeft,
 		ChevronRight,
@@ -43,6 +44,13 @@
 	let showArrows = $state(true);
 	let showMobileAnalysis = $state(false);
 
+	// Full-game analysis state (runs once per loaded PGN, independent of navigation)
+	let isAnalyzing = $state(false);
+	let analysisDone = $state(0);
+	let analysisTotal = $state(0);
+	let analysisFailed = $state(false);
+	let analysisRequestId = 0;
+
 	// Reactive PGN derived from URL
 	let pgnString = $derived(page.url.searchParams.get('pgn') || '');
 
@@ -78,11 +86,38 @@
 				history = moves;
 				currentIndex = newFens.length - 1;
 				moveRatings = new Array(newFens.length).fill(null);
+
+				runAnalysis(newFens, moves);
 			} catch (e) {
 				console.error('Failed to parse PGN', e);
 			}
 		}
 	});
+
+	function runAnalysis(gameFens: string[], gameMoves: string[]) {
+		const requestId = ++analysisRequestId;
+		isAnalyzing = true;
+		analysisFailed = false;
+		analysisDone = 0;
+		analysisTotal = gameFens.length;
+
+		analyzeGame(gameFens, gameMoves, (done, total) => {
+			if (requestId !== analysisRequestId) return;
+			analysisDone = done;
+			analysisTotal = total;
+		})
+			.then((result) => {
+				if (requestId !== analysisRequestId) return;
+				moveRatings = result.ratings;
+				isAnalyzing = false;
+			})
+			.catch((e) => {
+				console.error('Game analysis failed', e);
+				if (requestId !== analysisRequestId) return;
+				isAnalyzing = false;
+				analysisFailed = true;
+			});
+	}
 
 	function goToMove(index: number) {
 		if (index >= 0 && index < fens.length) {
@@ -124,36 +159,6 @@
 			bestMove: bestMove || engineInfo.bestMove,
 			pv: pv.length > 0 ? pv : engineInfo.pv
 		};
-
-		// Simple move rating logic (only for games, not sandbox)
-		if (!sandboxActive && currentIndex > 0) {
-			calculateMoveRating(currentIndex, evaluation);
-		}
-	}
-
-	function calculateMoveRating(index: number, currentEval: number) {
-		if (moveRatings[index]) return;
-
-		// Book moves happen in the opening
-		// First 10 plies (5 full moves) are almost always book
-		if (index <= 10) {
-			const rand = Math.random();
-			if (rand > 0.1) {
-				moveRatings[index] = 'Book';
-				return;
-			}
-		}
-
-		// Mock logic: randomly assign ratings
-		const rand = Math.random();
-		if (rand > 0.99) moveRatings[index] = 'Brilliant';
-		else if (rand > 0.94) moveRatings[index] = 'Great';
-		else if (rand > 0.75) moveRatings[index] = 'Best';
-		else if (rand > 0.6) moveRatings[index] = 'Excellent';
-		else if (rand > 0.45) moveRatings[index] = 'Good';
-		else if (rand > 0.3) moveRatings[index] = 'Inaccuracy';
-		else if (rand > 0.15) moveRatings[index] = 'Mistake';
-		else moveRatings[index] = 'Blunder';
 	}
 
 	function enterSandbox() {
@@ -325,9 +330,32 @@
 						>
 							<Ghost class="h-3 w-3" /> SANDBOX
 						</span>
+					{:else if isAnalyzing}
+						<span class="text-[9px] font-bold text-primary flex items-center gap-1.5">
+							<span
+								class="h-2.5 w-2.5 border-2 border-primary border-t-transparent rounded-full animate-spin"
+							></span>
+							Reviewing {analysisDone}/{analysisTotal}
+						</span>
 					{/if}
 				</div>
+				{#if isAnalyzing}
+					<div class="h-1 w-full bg-white/5">
+						<div
+							class="h-full bg-primary transition-all duration-300"
+							style="width: {analysisTotal ? (analysisDone / analysisTotal) * 100 : 0}%"
+						></div>
+					</div>
+				{/if}
 				<div class="p-4 space-y-4">
+					{#if analysisFailed}
+						<div
+							class="flex items-center gap-2 text-[10px] font-bold text-orange-400 bg-orange-400/10 border border-orange-400/20 rounded-lg px-3 py-2"
+						>
+							<AlertCircle class="h-3.5 w-3.5 shrink-0" />
+							Game review failed to complete. Move ratings may be incomplete.
+						</div>
+					{/if}
 					{#if engineInfo.bestMove}
 						<div class="flex items-center gap-4">
 							<div class="flex flex-col">
@@ -602,6 +630,15 @@
 						<Ghost class="h-4 w-4" />
 						<span class="text-xs font-black uppercase tracking-tight">Sandbox</span>
 					</div>
+				{:else if isAnalyzing}
+					<div class="flex items-center gap-1.5 text-primary">
+						<span
+							class="h-3 w-3 border-2 border-primary border-t-transparent rounded-full animate-spin"
+						></span>
+						<span class="text-xs font-black uppercase tracking-tight"
+							>Reviewing {analysisDone}/{analysisTotal}</span
+						>
+					</div>
 				{:else}
 					<div class="text-[10px] font-bold text-neutral-600 uppercase">Analysis & Sandbox</div>
 				{/if}
@@ -670,8 +707,23 @@
 						>
 							<Ghost class="h-3 w-3" /> SANDBOX
 						</span>
+					{:else if isAnalyzing}
+						<span class="text-[9px] font-bold text-primary flex items-center gap-1.5">
+							<span
+								class="h-2.5 w-2.5 border-2 border-primary border-t-transparent rounded-full animate-spin"
+							></span>
+							Reviewing {analysisDone}/{analysisTotal}
+						</span>
 					{/if}
 				</div>
+				{#if isAnalyzing}
+					<div class="h-1 w-full bg-white/5 rounded-full overflow-hidden -mt-2">
+						<div
+							class="h-full bg-primary transition-all duration-300"
+							style="width: {analysisTotal ? (analysisDone / analysisTotal) * 100 : 0}%"
+						></div>
+					</div>
+				{/if}
 
 				<div class="flex items-center gap-4">
 					{#if engineInfo.bestMove}
