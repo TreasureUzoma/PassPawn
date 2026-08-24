@@ -15,7 +15,10 @@
 
 	const dispatch = createEventDispatcher<{
 		move: { from: Square; to: Square; promotion?: string };
-		engine: { evaluation: number; bestMove: string; pv: string[] };
+		// `reset: true` means "forget whatever bestMove/pv you were showing" - sent the
+		// instant a new position starts being analyzed, so the arrow doesn't keep
+		// pointing at the previous position while the engine catches up.
+		engine: { evaluation: number; bestMove: string; pv: string[]; reset?: boolean };
 	}>();
 
 	let chess = new Chess(fen);
@@ -61,6 +64,11 @@
 
 		requestToken++;
 
+		// A new position is now the one that matters - whatever bestMove/arrow was
+		// shown belonged to whatever position we were just looking at, so clear it
+		// immediately instead of leaving it on screen until the new search resolves.
+		dispatch('engine', { evaluation, bestMove: '', pv: [], reset: true });
+
 		if (searching) {
 			queuedFen = fenToEval;
 			queuedTurn = turnToEval;
@@ -105,6 +113,11 @@
 				}
 
 				if (line.startsWith('info') && (line.includes('score cp') || line.includes('score mate'))) {
+					// This search has already been superseded by a newer request (e.g. a
+					// `stop` was sent but the engine is still flushing lines from the old
+					// search) - the position it describes is no longer on screen.
+					if (activeToken !== requestToken) return;
+
 					const scoreCpMatch = line.match(/score cp (-?\d+)/);
 					const scoreMateMatch = line.match(/score mate (-?\d+)/);
 					const pvMatch = line.match(/pv\s+(.*)/);

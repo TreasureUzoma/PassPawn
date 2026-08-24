@@ -159,13 +159,13 @@
 	}
 
 	function handleEngineUpdate(
-		event: CustomEvent<{ evaluation: number; bestMove: string; pv: string[] }>
+		event: CustomEvent<{ evaluation: number; bestMove: string; pv: string[]; reset?: boolean }>
 	) {
-		const { evaluation, bestMove, pv } = event.detail;
+		const { evaluation, bestMove, pv, reset } = event.detail;
 		engineInfo = {
 			evaluation,
-			bestMove: bestMove || engineInfo.bestMove,
-			pv: pv.length > 0 ? pv : engineInfo.pv
+			bestMove: reset ? '' : bestMove || engineInfo.bestMove,
+			pv: reset ? [] : pv.length > 0 ? pv : engineInfo.pv
 		};
 	}
 
