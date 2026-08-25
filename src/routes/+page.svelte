@@ -6,6 +6,7 @@
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import { goto } from '$app/navigation';
+	import { stashPgn } from '$lib/utils/pgn-transfer';
 
 	let platform: 'chess.com' | 'pgn' = $state('chess.com');
 	let username = $state('');
@@ -19,6 +20,9 @@
 		if (platform === 'chess.com') {
 			goto(`/games/${username}`);
 		} else {
+			const trimmed = pgnContent.trim();
+			if (!trimmed) return;
+			stashPgn(trimmed);
 			goto(`/games/pgn`);
 		}
 	}

@@ -6,6 +6,7 @@
 	import ChessBoard from '$lib/components/ChessBoard.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { analyzeGame, type GameReport, type MoveRating } from '$lib/utils/chess-analysis';
+	import { takePgn } from '$lib/utils/pgn-transfer';
 	import GameReportCard from '$lib/components/GameReportCard.svelte';
 	import {
 		ChevronLeft,
@@ -55,8 +56,9 @@
 	let gameReport = $state<GameReport | null>(null);
 	let accuracyByPly = $state<(number | null)[]>([]);
 
-	// Reactive PGN derived from URL
-	let pgnString = $derived(page.url.searchParams.get('pgn') || '');
+	// PGN handed off via sessionStorage (avoids URL length limits for large
+	// PGNs), falling back to the `?pgn=` query param for direct/shared links.
+	let pgnString = $state(takePgn() || page.url.searchParams.get('pgn') || '');
 
 	// Reactively load game when PGN changes
 	$effect(() => {

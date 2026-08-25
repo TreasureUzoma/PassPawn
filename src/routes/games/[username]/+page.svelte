@@ -17,8 +17,15 @@
 	} from 'lucide-svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
+	import { goto } from '$app/navigation';
+	import { stashPgn } from '$lib/utils/pgn-transfer';
 
 	let { data }: { data: PageData } = $props();
+
+	function reviewGame(pgn: string) {
+		stashPgn(pgn);
+		goto('/games/pgn');
+	}
 
 	interface GamePlayer {
 		username: string;
@@ -298,9 +305,10 @@
 				{#each visibleGames as game}
 					{@const result = getGameResult(game)}
 					{@const TypeIcon = getGameTypeIcon(game.time_class)}
-					<a
-						href="/games/pgn?pgn={encodeURIComponent(game.pgn)}"
-						class="group relative flex items-center gap-3 sm:gap-4 rounded-xl border bg-card p-3 sm:p-4 transition-all hover:border-primary hover:shadow-lg active:scale-[0.98]"
+					<button
+						type="button"
+						onclick={() => reviewGame(game.pgn)}
+						class="group relative flex w-full items-center gap-3 sm:gap-4 rounded-xl border bg-card p-3 sm:p-4 text-left transition-all hover:border-primary hover:shadow-lg active:scale-[0.98]"
 					>
 						<!-- Left: Game Type Icon -->
 						<div
@@ -347,7 +355,7 @@
 								class="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors"
 							/>
 						</div>
-					</a>
+					</button>
 				{/each}
 
 				{#if filteredGames.length > visibleGames.length}
