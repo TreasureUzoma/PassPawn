@@ -19,6 +19,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { goto } from '$app/navigation';
 	import { stashPgn } from '$lib/utils/pgn-transfer';
+	import AppHeader from '$lib/components/AppHeader.svelte';
+	import { resolve } from '$app/paths';
 
 	let { data }: { data: PageData } = $props();
 
@@ -173,6 +175,12 @@
 		resultFilter = 'all';
 	}
 </script>
+
+<AppHeader>
+	<Button href={resolve('/')} variant="ghost" size="sm" class="text-xs font-semibold">
+		Change user
+	</Button>
+</AppHeader>
 
 <div class="container mx-auto max-w-4xl space-y-6 p-4">
 	<div

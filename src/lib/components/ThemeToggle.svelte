@@ -32,12 +32,12 @@
 
 <button
 	onclick={toggleTheme}
-	class="rounded-full p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+	class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
 	aria-label="Toggle theme"
 >
 	{#if isDark}
-		<Moon class="h-5 w-5" />
+		<Moon class="h-4 w-4" />
 	{:else}
-		<Sun class="h-5 w-5" />
+		<Sun class="h-4 w-4" />
 	{/if}
 </button>
