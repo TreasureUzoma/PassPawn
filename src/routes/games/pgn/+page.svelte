@@ -8,6 +8,7 @@
 	import { analyzeGame, type GameReport, type MoveRating } from '$lib/utils/chess-analysis';
 	import { takePgn } from '$lib/utils/pgn-transfer';
 	import GameReportCard from '$lib/components/GameReportCard.svelte';
+	import GameAnalysisLoader from '$lib/components/GameAnalysisLoader.svelte';
 	import {
 		ChevronLeft,
 		ChevronRight,
@@ -236,6 +237,10 @@
 	);
 </script>
 
+{#if isAnalyzing}
+	<GameAnalysisLoader done={analysisDone} total={analysisTotal} />
+{/if}
+
 <div
 	class="min-h-screen lg:h-screen w-screen flex flex-col bg-[#161512] text-neutral-200 lg:overflow-hidden font-sans"
 >
@@ -264,21 +269,16 @@
 				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mb-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
 			>
 				<div
-					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1 sm:py-2 flex items-center justify-between shadow-xl"
+					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-2 shadow-sm"
 				>
-					<div class="flex items-center gap-2 overflow-hidden">
-						<div
-							class="h-6 w-6 sm:h-8 sm:w-8 rounded bg-neutral-700 flex items-center justify-center shrink-0"
-						>
-							<Users class="h-4 w-4 sm:h-5 sm:w-5 text-neutral-400" />
-						</div>
-						<span class="font-bold text-xs sm:text-base truncate text-white">
-							{orientation === 'white' ? blackName : whiteName}
-						</span>
+					<div
+						class="h-6 w-6 sm:h-8 sm:w-8 rounded bg-neutral-700 flex items-center justify-center shrink-0"
+					>
+						<Users class="h-4 w-4 sm:h-5 sm:w-5 text-neutral-400" />
 					</div>
-					<div class="text-[10px] font-mono text-neutral-500 bg-white/5 px-2 py-0.5 rounded">
-						OPPONENT
-					</div>
+					<span class="font-bold text-xs sm:text-base truncate text-white">
+						{orientation === 'white' ? blackName : whiteName}
+					</span>
 				</div>
 			</div>
 
@@ -301,21 +301,16 @@
 				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mt-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
 			>
 				<div
-					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1 sm:py-2 flex items-center justify-between shadow-xl"
+					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-2 shadow-sm"
 				>
-					<div class="flex items-center gap-2 overflow-hidden">
-						<div
-							class="h-6 w-6 sm:h-8 sm:w-8 rounded bg-primary/20 flex items-center justify-center shrink-0"
-						>
-							<Users class="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-						</div>
-						<span class="font-bold text-xs sm:text-base truncate text-white">
-							{orientation === 'white' ? whiteName : blackName}
-						</span>
+					<div
+						class="h-6 w-6 sm:h-8 sm:w-8 rounded bg-primary/20 flex items-center justify-center shrink-0"
+					>
+						<Users class="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
 					</div>
-					<div class="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">
-						YOU
-					</div>
+					<span class="font-bold text-xs sm:text-base truncate text-white">
+						{orientation === 'white' ? whiteName : blackName}
+					</span>
 				</div>
 			</div>
 		</div>
@@ -360,9 +355,7 @@
 						Analysis
 					</h3>
 					{#if sandboxActive}
-						<span
-							class="text-[9px] font-bold text-orange-400 animate-pulse flex items-center gap-1"
-						>
+						<span class="text-[9px] font-bold text-orange-400 flex items-center gap-1">
 							<Ghost class="h-3 w-3" /> SANDBOX
 						</span>
 					{:else if isAnalyzing}
@@ -431,7 +424,7 @@
 							class="flex items-center gap-3 bg-white/5 p-2 rounded-lg border border-white/5 animate-in slide-in-from-right-4"
 						>
 							{#if cfg}
-								<cfg.icon class="h-6 w-6 {cfg.color} drop-shadow-[0_0_8px_currentColor]" />
+								<cfg.icon class="h-6 w-6 {cfg.color}" />
 								<div>
 									<p class="text-[10px] font-black uppercase {cfg.color} leading-none">{rating}</p>
 									<p class="text-[9px] text-neutral-500 font-bold mt-1">Move {currentIndex}</p>
@@ -468,7 +461,7 @@
 								onclick={() => goToMove(idx1)}
 								class="col-span-5 text-left px-3 py-2 text-xs font-bold transition-all rounded-sm flex items-center justify-between {currentIndex ===
 									idx1 && !sandboxActive
-									? 'bg-primary text-primary-foreground font-bold shadow-[0_0_10px_rgba(var(--primary),0.3)] shadow-inner'
+									? 'bg-primary text-primary-foreground font-bold shadow-sm'
 									: 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'}"
 							>
 								{pair[0]}
@@ -488,7 +481,7 @@
 									onclick={() => goToMove(idx2)}
 									class="col-span-5 text-left px-3 py-2 text-xs font-bold transition-all rounded-sm flex items-center justify-between {currentIndex ===
 										idx2 && !sandboxActive
-										? 'bg-primary text-primary-foreground font-bold shadow-[0_0_10px_rgba(var(--primary),0.3)] shadow-inner'
+										? 'bg-primary text-primary-foreground font-bold shadow-sm'
 										: 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'}"
 								>
 									{pair[1]}
@@ -657,7 +650,7 @@
 					{@const cfg = getRatingIcon(rating)}
 					{#if cfg}
 						<div class="flex items-center gap-1.5 animate-in zoom-in-50 duration-300">
-							<cfg.icon class="h-4 w-4 {cfg.color} drop-shadow-[0_0_5px_currentColor]" />
+							<cfg.icon class="h-4 w-4 {cfg.color}" />
 							<span class="text-xs font-black uppercase {cfg.color} tracking-tight">{rating}</span>
 						</div>
 					{/if}
@@ -756,9 +749,7 @@
 						>Best Move</span
 					>
 					{#if sandboxActive}
-						<span
-							class="text-[9px] font-bold text-orange-400 animate-pulse flex items-center gap-1"
-						>
+						<span class="text-[9px] font-bold text-orange-400 flex items-center gap-1">
 							<Ghost class="h-3 w-3" /> SANDBOX
 						</span>
 					{:else if isAnalyzing}
@@ -944,19 +935,30 @@
 {/if}
 
 <style>
+	/* This page renders as its own fixed dark theme regardless of the app's
+	   light/dark tokens, so the scrollbar is styled with real colors here
+	   instead of theme vars (which don't resolve inside a plain hsl()/rgba()
+	   wrapper and were making the thumb effectively invisible). */
+	.custom-scrollbar {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+	}
 	.custom-scrollbar::-webkit-scrollbar {
-		width: 4px;
-		height: 4px;
+		width: 6px;
+		height: 6px;
 	}
 	.custom-scrollbar::-webkit-scrollbar-track {
 		background: transparent;
 	}
 	.custom-scrollbar::-webkit-scrollbar-thumb {
-		background: hsl(var(--muted));
-		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.18);
+		border-radius: 999px;
+		border: 1px solid transparent;
+		background-clip: padding-box;
 	}
 	.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-		background: hsl(var(--muted-foreground) / 0.5);
+		background: rgba(255, 255, 255, 0.32);
+		background-clip: padding-box;
 	}
 
 	.no-scrollbar::-webkit-scrollbar {

@@ -10,10 +10,8 @@
 	class="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60"
 >
 	<div class="container mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-4">
-		<a href={resolve('/')} class="flex items-center gap-2 shrink-0 group">
-			<span
-				class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105"
-			>
+		<a href={resolve('/')} class="flex items-center shrink-0 group">
+			<span class="flex h-7 w-7 items-center justify-center">
 				<Crown class="h-4 w-4" />
 			</span>
 			<span class="text-sm font-black tracking-tight">

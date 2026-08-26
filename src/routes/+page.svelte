@@ -7,8 +7,11 @@
 	import Label from '$lib/components/ui/label/label.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { stashPgn } from '$lib/utils/pgn-transfer';
 	import { ArrowRight, Sparkles, Swords, LineChart } from 'lucide-svelte';
+
+	const pgnPlaceholder = '[Event "..."]\n1. e4 e5 2. Nf3 ...';
 
 	let platform: 'chess.com' | 'pgn' = $state('chess.com');
 	let username = $state('');
@@ -22,12 +25,12 @@
 		if (platform === 'chess.com') {
 			const trimmed = username.trim();
 			if (!trimmed) return;
-			goto(`/games/${trimmed}`);
+			goto(resolve('/games/[username]', { username: trimmed }));
 		} else {
 			const trimmed = pgnContent.trim();
 			if (!trimmed) return;
 			stashPgn(trimmed);
-			goto(`/games/pgn`);
+			goto(resolve('/games/pgn'));
 		}
 	}
 
@@ -69,17 +72,12 @@
 
 	<main class="flex flex-1 flex-col items-center justify-center gap-10 px-4 py-12 sm:py-16">
 		<div class="max-w-lg space-y-3 text-center">
-			<span
-				class="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-muted-foreground"
-			>
-				<Sparkles class="h-3 w-3 text-primary" /> Free · Runs in your browser
-			</span>
 			<h1 class="text-3xl font-black tracking-tight sm:text-5xl">
 				Know exactly<br class="hidden sm:block" /> where you went wrong.
 			</h1>
 			<p class="text-balance text-sm text-muted-foreground sm:text-base">
-				Import a Chess.com profile or paste a PGN to get an engine-backed review — accuracy,
-				move ratings, and best-move arrows for every position.
+				Import a Chess.com profile or paste a PGN to get an engine-backed review — accuracy, move
+				ratings, and best-move arrows for every position.
 			</p>
 		</div>
 
@@ -109,7 +107,7 @@
 						<Textarea
 							id="pgn"
 							bind:value={pgnContent}
-							placeholder={'[Event "..."]\n1. e4 e5 2. Nf3 ...'}
+							placeholder={pgnPlaceholder}
 							class="min-h-32 font-mono text-xs"
 						/>
 					</div>
@@ -123,7 +121,7 @@
 		</Card.Root>
 
 		<ul class="grid w-full max-w-md gap-2.5 sm:grid-cols-1">
-			{#each highlights as h}
+			{#each highlights as h (h.text)}
 				<li class="flex items-center gap-2.5 text-xs font-medium text-muted-foreground">
 					<span
 						class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
