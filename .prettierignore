@@ -8,3 +8,7 @@ bun.lockb
 # Miscellaneous
 /static/
 /drizzle/
+
+# Generated data (single-line, from lichess-org/chess-openings) - not
+# hand-edited, and reformatting would just churn a multi-hundred-KB diff.
+/src/lib/data/eco-openings.ts

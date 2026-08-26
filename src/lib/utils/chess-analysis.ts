@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js';
-import { OPENING_BOOK } from './opening-book';
+import { isBookMove as isKnownOpeningMove } from './openings';
 
 export type MoveRating =
 	| 'Book'
@@ -41,9 +41,7 @@ const MOVETIME_MS = 600; // more search time per position = fewer bogus "blunder
 const BOOK_MAX_PLY = 10; // only look for book moves in the first N plies
 
 function isBookMove(sanMoves: string[], plyIndex: number): boolean {
-	if (plyIndex > BOOK_MAX_PLY) return false;
-	const prefix = sanMoves.slice(0, plyIndex + 1).join(' ');
-	return OPENING_BOOK.some((line) => line === prefix || line.startsWith(prefix + ' '));
+	return isKnownOpeningMove(sanMoves, plyIndex, BOOK_MAX_PLY);
 }
 
 interface EngineLine {

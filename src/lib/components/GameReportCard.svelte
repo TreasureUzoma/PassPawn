@@ -9,7 +9,8 @@
 		accuracyByPly,
 		currentIndex,
 		isAnalyzing,
-		onSelect
+		onSelect,
+		opening
 	}: {
 		report: GameReport | null;
 		whiteName: string;
@@ -19,6 +20,7 @@
 		currentIndex: number;
 		isAnalyzing: boolean;
 		onSelect: (index: number) => void;
+		opening?: { eco: string; name: string } | null;
 	} = $props();
 
 	const ratingColor: Record<MoveRating, string> = {
@@ -40,8 +42,18 @@
 </script>
 
 <div class="bg-[#262421] rounded-xl border border-neutral-800 shadow-xl overflow-hidden">
-	<div class="p-3 border-b border-neutral-800 bg-white/5">
-		<h3 class="text-[10px] font-black uppercase tracking-widest text-neutral-400">Game Report</h3>
+	<div class="p-3 border-b border-neutral-800 bg-white/5 flex items-center justify-between gap-2">
+		<h3 class="text-[10px] font-black uppercase tracking-widest text-neutral-400 shrink-0">
+			Game Report
+		</h3>
+		{#if opening}
+			<span
+				class="text-[10px] font-bold text-neutral-500 truncate"
+				title={`${opening.name} (${opening.eco})`}
+			>
+				{opening.name} <span class="text-neutral-600">· {opening.eco}</span>
+			</span>
+		{/if}
 	</div>
 
 	{#if !report}

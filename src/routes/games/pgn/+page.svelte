@@ -7,6 +7,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { analyzeGame, type GameReport, type MoveRating } from '$lib/utils/chess-analysis';
 	import { takePgn } from '$lib/utils/pgn-transfer';
+	import { getOpening } from '$lib/utils/openings';
 	import GameReportCard from '$lib/components/GameReportCard.svelte';
 	import GameAnalysisLoader from '$lib/components/GameAnalysisLoader.svelte';
 	import {
@@ -238,6 +239,8 @@
 		}
 	}
 
+	let opening = $derived(getOpening(history));
+
 	let movePairs = $derived(
 		Array.from({ length: Math.ceil(history.length / 2) }, (_, i) => [
 			history[i * 2],
@@ -351,6 +354,7 @@
 					{accuracyByPly}
 					{currentIndex}
 					{isAnalyzing}
+					{opening}
 					onSelect={goToMove}
 				/>
 			</div>
@@ -754,6 +758,7 @@
 					{accuracyByPly}
 					{currentIndex}
 					{isAnalyzing}
+					{opening}
 					onSelect={(i) => {
 						goToMove(i);
 						showMobileAnalysis = false;
