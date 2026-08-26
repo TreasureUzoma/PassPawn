@@ -26,7 +26,7 @@
 
 	function reviewGame(pgn: string) {
 		stashPgn(pgn);
-		goto('/games/pgn');
+		goto(resolve('/games/pgn'));
 	}
 
 	interface GamePlayer {

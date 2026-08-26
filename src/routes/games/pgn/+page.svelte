@@ -25,7 +25,8 @@
 		Trash2,
 		BookOpen,
 		Users,
-		Trophy
+		Trophy,
+		Undo2
 	} from 'lucide-svelte';
 
 	const game = new Chess();
@@ -181,6 +182,14 @@
 
 	function exitSandbox() {
 		sandboxActive = false;
+	}
+
+	function undoSandboxMove() {
+		const move = sandboxGame.undo();
+		if (move) {
+			sandboxFen = sandboxGame.fen();
+			sandboxHistory = sandboxHistory.slice(0, -1);
+		}
 	}
 
 	function handleMove(event: CustomEvent<{ from: string; to: string; promotion?: string }>) {
@@ -586,14 +595,25 @@
 							</Button>
 						</div>
 						{#if sandboxActive}
-							<Button
-								variant="destructive"
-								size="sm"
-								onclick={exitSandbox}
-								class="w-full h-9 text-[10px] font-black uppercase tracking-tight"
-							>
-								<Trash2 class="mr-2 h-3.5 w-3.5" /> Exit Sandbox
-							</Button>
+							<div class="grid grid-cols-2 gap-2">
+								<Button
+									variant="outline"
+									size="sm"
+									onclick={undoSandboxMove}
+									disabled={sandboxHistory.length === 0}
+									class="h-9 text-[10px] font-black uppercase tracking-tight border-neutral-800 hover:bg-white/5"
+								>
+									<Undo2 class="mr-2 h-3.5 w-3.5" /> Undo
+								</Button>
+								<Button
+									variant="destructive"
+									size="sm"
+									onclick={exitSandbox}
+									class="h-9 text-[10px] font-black uppercase tracking-tight"
+								>
+									<Trash2 class="mr-2 h-3.5 w-3.5" /> Exit Sandbox
+								</Button>
+							</div>
 						{:else}
 							<Button
 								variant="outline"
@@ -908,8 +928,16 @@
 
 				{#if sandboxActive}
 					<Button
+						variant="outline"
+						class="h-12 border-neutral-800 text-xs font-black uppercase tracking-tight hover:bg-white/5"
+						onclick={undoSandboxMove}
+						disabled={sandboxHistory.length === 0}
+					>
+						<Undo2 class="mr-2 h-4 w-4" /> Undo
+					</Button>
+					<Button
 						variant="destructive"
-						class="col-span-2 h-12 text-xs font-black uppercase tracking-tight"
+						class="h-12 text-xs font-black uppercase tracking-tight"
 						onclick={() => {
 							exitSandbox();
 							showMobileAnalysis = false;
