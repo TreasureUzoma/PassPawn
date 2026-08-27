@@ -602,11 +602,11 @@
 						style="transform: translate({displayCol * 100}%, {displayRow *
 							100}%); opacity: {isDragged ? 0 : 1};"
 					>
-						<div class="h-[80%] w-[80%] {isCaptureTarget ? 'opacity-80' : ''}">
+						<div class="h-[85%] w-[85%] {isCaptureTarget ? 'opacity-80' : ''}">
 							<Icon
 								name={getPieceName(piece.type)}
 								color={piece.color}
-								size="107%"
+								size="112%"
 								class="drop-shadow-lg filter"
 							/>
 						</div>
@@ -624,13 +624,13 @@
 					<defs>
 						<marker
 							id="pp-arrowhead"
-							markerWidth="2.4"
-							markerHeight="2.4"
-							refX="1.2"
-							refY="1.2"
+							markerWidth="2.8"
+							markerHeight="2.8"
+							refX="1.4"
+							refY="1.4"
 							orient="auto"
 						>
-							<path d="M0,0 L2.4,1.2 L0,2.4 Z" fill="rgba(255,170,0,0.85)" />
+							<path d="M0,0 L2.8,1.4 L0,2.8 Z" fill="rgba(255,170,0,0.92)" />
 						</marker>
 					</defs>
 					<line
@@ -638,8 +638,8 @@
 						y1={arrow.y1}
 						x2={arrow.x2}
 						y2={arrow.y2}
-						stroke="rgba(255,170,0,0.85)"
-						stroke-width="2.2"
+						stroke="rgba(255,170,0,0.92)"
+						stroke-width="2.6"
 						stroke-linecap="round"
 						marker-end="url(#pp-arrowhead)"
 					/>

@@ -258,35 +258,35 @@
 >
 	<!-- Mobile Top Bar: title + way back out of the review -->
 	<div
-		class="lg:hidden shrink-0 flex items-center justify-between px-4 py-3 border-b border-neutral-800 bg-[#1e1c1a]"
+		class="lg:hidden shrink-0 flex items-center justify-between px-3 py-2 border-b border-neutral-800 bg-[#1e1c1a]"
 	>
 		<h1 class="text-xs font-black uppercase tracking-widest text-neutral-400">Game Review</h1>
 		<button
 			onclick={() => goto(resolve('/'))}
 			aria-label="Close review"
-			class="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center text-neutral-400 hover:text-white"
+			class="h-7 w-7 rounded-full bg-white/5 flex items-center justify-center text-neutral-400 hover:text-white"
 		>
 			<X class="h-4 w-4" />
 		</button>
 	</div>
 
 	<!-- Main Area: Eval Bar | Board | Sidebar -->
-	<div class="flex-1 flex overflow-hidden p-2 sm:p-4 gap-2 sm:gap-4 justify-center">
+	<div class="flex-1 flex overflow-hidden px-1 py-2 sm:p-4 gap-2 sm:gap-4 justify-center">
 		<!-- 2. Board Container (Maximized) -->
 		<div
 			class="flex-1 flex flex-col justify-center items-center overflow-y-auto lg:overflow-hidden min-w-0 gap-1 sm:gap-2 no-scrollbar"
 		>
 			<!-- Top Player Name -->
 			<div
-				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mb-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
+				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mb-0.5 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
 			>
 				<div
-					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-2 shadow-sm"
+					class="bg-[#262421] border border-neutral-800 rounded-md px-2.5 sm:px-4 py-1 sm:py-2 flex items-center gap-2 shadow-sm"
 				>
 					<div
-						class="h-6 w-6 sm:h-8 sm:w-8 rounded bg-neutral-700 flex items-center justify-center shrink-0"
+						class="h-5 w-5 sm:h-8 sm:w-8 rounded bg-neutral-700 flex items-center justify-center shrink-0"
 					>
-						<Users class="h-4 w-4 sm:h-5 sm:w-5 text-neutral-400" />
+						<Users class="h-3.5 w-3.5 sm:h-5 sm:w-5 text-neutral-400" />
 					</div>
 					<span class="font-bold text-xs sm:text-base truncate text-white">
 						{orientation === 'white' ? blackName : whiteName}
@@ -310,20 +310,83 @@
 
 			<!-- Bottom Player Name -->
 			<div
-				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mt-1 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
+				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mt-0.5 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
 			>
 				<div
-					class="bg-[#262421] border border-neutral-800 rounded-md px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-2 shadow-sm"
+					class="bg-[#262421] border border-neutral-800 rounded-md px-2.5 sm:px-4 py-1 sm:py-2 flex items-center gap-2 shadow-sm"
 				>
 					<div
-						class="h-6 w-6 sm:h-8 sm:w-8 rounded bg-primary/20 flex items-center justify-center shrink-0"
+						class="h-5 w-5 sm:h-8 sm:w-8 rounded bg-primary/20 flex items-center justify-center shrink-0"
 					>
-						<Users class="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+						<Users class="h-3.5 w-3.5 sm:h-5 sm:w-5 text-primary" />
 					</div>
 					<span class="font-bold text-xs sm:text-base truncate text-white">
 						{orientation === 'white' ? whiteName : blackName}
 					</span>
 				</div>
+			</div>
+
+			<!-- Mobile Engine Strip: always-visible best-move/sandbox readout, so it's
+			     visible right under the board without opening the full-screen analysis
+			     overlay (which used to be the only place mobile could see it, and
+			     covered the board while trying sandbox moves). -->
+			<div
+				class="lg:hidden w-full max-w-3xl shrink-0 flex items-center gap-2 bg-[#262421] border border-neutral-800 rounded-md px-2.5 py-1.5 shadow-sm"
+			>
+				{#if sandboxActive}
+					<span class="flex items-center gap-1 text-[9px] font-black uppercase text-orange-400 shrink-0">
+						<Ghost class="h-3.5 w-3.5" /> Sandbox
+					</span>
+					<div class="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
+						{#if engineInfo.bestMove}
+							<span class="text-[9px] uppercase font-black text-neutral-500 shrink-0">Best</span>
+							<span
+								class="bg-primary text-primary-foreground px-2 py-0.5 rounded font-black font-mono text-xs shrink-0"
+							>
+								{engineInfo.bestMove}
+							</span>
+						{:else}
+							<span class="text-[10px] text-neutral-500 italic">Thinking…</span>
+						{/if}
+					</div>
+					<button
+						onclick={undoSandboxMove}
+						disabled={sandboxHistory.length === 0}
+						aria-label="Undo sandbox move"
+						class="shrink-0 h-7 w-7 rounded-md bg-white/5 flex items-center justify-center text-neutral-400 disabled:opacity-30"
+					>
+						<Undo2 class="h-3.5 w-3.5" />
+					</button>
+					<button
+						onclick={exitSandbox}
+						aria-label="Exit sandbox"
+						class="shrink-0 h-7 px-2 rounded-md bg-red-500/10 text-red-400 text-[10px] font-black uppercase flex items-center gap-1"
+					>
+						<Trash2 class="h-3.5 w-3.5" /> Exit
+					</button>
+				{:else if engineInfo.bestMove}
+					<span class="text-[9px] uppercase font-black text-neutral-500 shrink-0">Best</span>
+					<span
+						class="bg-primary text-primary-foreground px-2 py-0.5 rounded font-black font-mono text-xs shrink-0"
+					>
+						{engineInfo.bestMove}
+					</span>
+					<div class="flex-1 flex gap-1 overflow-x-auto no-scrollbar">
+						{#each engineInfo.pv.slice(0, 4) as move, i (i)}
+							<span
+								class="text-[10px] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0"
+								>{move}</span
+							>
+						{/each}
+					</div>
+				{:else}
+					<div class="flex items-center gap-2 py-0.5">
+						<div
+							class="h-3 w-3 border-2 border-primary border-t-transparent rounded-full animate-spin"
+						></div>
+						<span class="text-[10px] font-bold text-neutral-500 italic">Engine thinking…</span>
+					</div>
+				{/if}
 			</div>
 		</div>
 
@@ -635,7 +698,7 @@
 	</div>
 
 	<div
-		class="lg:hidden h-20 shrink-0 bg-[#262421] border-t border-neutral-800 flex flex-col items-center justify-center px-4 gap-2 relative z-50"
+		class="lg:hidden h-16 shrink-0 bg-[#262421] border-t border-neutral-800 flex items-center justify-center px-3 relative z-50"
 	>
 		<div class="flex items-center justify-between w-full max-w-sm gap-2">
 			<div class="flex items-center gap-0.5">
@@ -644,7 +707,7 @@
 					size="icon"
 					onclick={firstMove}
 					disabled={currentIndex === 0 || sandboxActive}
-					class="h-10 w-8 text-neutral-500 hover:text-white"
+					class="h-9 w-8 text-neutral-500 hover:text-white"
 				>
 					<ChevronsLeft class="h-5 w-5" />
 				</Button>
@@ -654,7 +717,7 @@
 					size="icon"
 					onclick={prevMove}
 					disabled={currentIndex === 0 || sandboxActive}
-					class="h-10 w-10 text-neutral-400"
+					class="h-9 w-9 text-neutral-400"
 				>
 					<ChevronLeft class="h-6 w-6" />
 				</Button>
@@ -662,7 +725,7 @@
 
 			<button
 				onclick={() => (showMobileAnalysis = !showMobileAnalysis)}
-				class="flex flex-col items-center min-w-[100px] border border-white/5 bg-white/5 py-1 px-2 rounded-lg active:scale-95 transition-transform"
+				class="flex flex-col items-center min-w-[110px] border border-white/5 bg-white/5 py-1 px-2 rounded-lg active:scale-95 transition-transform"
 			>
 				<div
 					class="px-3 py-0.5 bg-white/10 rounded font-black text-[10px] text-neutral-400 uppercase tracking-tighter mb-1"
@@ -678,11 +741,6 @@
 							<span class="text-xs font-black uppercase {cfg.color} tracking-tight">{rating}</span>
 						</div>
 					{/if}
-				{:else if sandboxActive}
-					<div class="flex items-center gap-1.5 text-orange-400">
-						<Ghost class="h-4 w-4" />
-						<span class="text-xs font-black uppercase tracking-tight">Sandbox</span>
-					</div>
 				{:else if isAnalyzing}
 					<div class="flex items-center gap-1.5 text-primary">
 						<span
@@ -693,7 +751,7 @@
 						>
 					</div>
 				{:else}
-					<div class="text-[10px] font-bold text-neutral-600 uppercase">Analysis & Sandbox</div>
+					<div class="text-[10px] font-bold text-neutral-600 uppercase">Move List</div>
 				{/if}
 			</button>
 
@@ -703,7 +761,7 @@
 					size="icon"
 					onclick={nextMove}
 					disabled={currentIndex === fens.length - 1 || sandboxActive}
-					class="h-10 w-10 text-neutral-400"
+					class="h-9 w-9 text-neutral-400"
 				>
 					<ChevronRight class="h-6 w-6" />
 				</Button>
@@ -713,7 +771,7 @@
 					size="icon"
 					onclick={lastMove}
 					disabled={currentIndex === fens.length - 1 || sandboxActive}
-					class="h-10 w-8 text-neutral-500 hover:text-white"
+					class="h-9 w-8 text-neutral-500 hover:text-white"
 				>
 					<ChevronsRight class="h-5 w-5" />
 				</Button>
