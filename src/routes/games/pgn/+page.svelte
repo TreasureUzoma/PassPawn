@@ -271,14 +271,14 @@
 	</div>
 
 	<!-- Main Area: Eval Bar | Board | Sidebar -->
-	<div class="flex-1 flex overflow-hidden px-1 py-2 sm:p-4 gap-2 sm:gap-4 justify-center">
+	<div class="flex-1 flex overflow-hidden px-0 py-1.5 sm:p-4 gap-2 sm:gap-4 justify-center">
 		<!-- 2. Board Container (Maximized) -->
 		<div
 			class="flex-1 flex flex-col justify-center items-center overflow-y-auto lg:overflow-hidden min-w-0 gap-1 sm:gap-2 no-scrollbar"
 		>
 			<!-- Top Player Name -->
 			<div
-				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mb-0.5 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
+				class="w-full max-w-4xl lg:max-w-[calc(100vh-8rem)] mb-0.5 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
 			>
 				<div
 					class="bg-[#262421] border border-neutral-800 rounded-md px-2.5 sm:px-4 py-1 sm:py-2 flex items-center gap-2 shadow-sm"
@@ -296,7 +296,7 @@
 
 			<!-- Chess Board -->
 			<div
-				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] shrink-0 transition-all duration-300"
+				class="w-full max-w-4xl lg:max-w-[calc(100vh-8rem)] shrink-0 transition-all duration-300"
 			>
 				<ChessBoard
 					fen={sandboxActive ? sandboxFen : fens[currentIndex]}
@@ -310,7 +310,7 @@
 
 			<!-- Bottom Player Name -->
 			<div
-				class="w-full max-w-3xl lg:max-w-[calc(100vh-10rem)] mt-0.5 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
+				class="w-full max-w-4xl lg:max-w-[calc(100vh-8rem)] mt-0.5 sm:mb-2 shrink-0 relative z-10 transition-all duration-300"
 			>
 				<div
 					class="bg-[#262421] border border-neutral-800 rounded-md px-2.5 sm:px-4 py-1 sm:py-2 flex items-center gap-2 shadow-sm"
@@ -331,7 +331,7 @@
 			     overlay (which used to be the only place mobile could see it, and
 			     covered the board while trying sandbox moves). -->
 			<div
-				class="lg:hidden w-full max-w-3xl shrink-0 flex items-center gap-2 bg-[#262421] border border-neutral-800 rounded-md px-2.5 py-1.5 shadow-sm"
+				class="lg:hidden w-full max-w-4xl shrink-0 flex items-center gap-2 bg-[#262421] border border-neutral-800 rounded-md px-2.5 py-1.5 shadow-sm"
 			>
 				{#if sandboxActive}
 					<span class="flex items-center gap-1 text-[9px] font-black uppercase text-orange-400 shrink-0">
