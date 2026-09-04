@@ -58,6 +58,11 @@
 	let analysisRequestId = 0;
 	let gameReport = $state<GameReport | null>(null);
 	let accuracyByPly = $state<(number | null)[]>([]);
+	// Best move per ply, already computed by the full-game review - lets the UI
+	// show a position's best reply instantly while browsing already-reviewed
+	// moves instead of flashing "thinking" while ChessBoard's live engine
+	// re-searches a position that was just analyzed.
+	let analysisBestMoves = $state<(string | null)[]>([]);
 
 	// PGN handed off via sessionStorage (avoids URL length limits for large
 	// PGNs), falling back to the `?pgn=` query param for direct/shared links.
@@ -97,6 +102,7 @@
 				moveRatings = new Array(newFens.length).fill(null);
 				gameReport = null;
 				accuracyByPly = new Array(newFens.length).fill(null);
+				analysisBestMoves = new Array(newFens.length).fill(null);
 
 				runAnalysis(newFens, moves);
 			} catch (e) {
@@ -121,6 +127,7 @@
 				if (requestId !== analysisRequestId) return;
 				moveRatings = result.ratings;
 				accuracyByPly = result.accuracyByPly;
+				analysisBestMoves = result.bestMoves;
 				gameReport = result.report;
 				isAnalyzing = false;
 			})
@@ -239,6 +246,16 @@
 		}
 	}
 
+	// Prefer the already-reviewed best move for the current position over
+	// ChessBoard's live engine (which reports '' the instant it starts a fresh
+	// search on nav) - avoids re-flashing "Engine thinking..." for a move the
+	// full review already covered. Sandbox positions were never part of the
+	// review, so they always fall back to the live search.
+	let cachedBestMove = $derived(
+		!sandboxActive ? (analysisBestMoves[currentIndex] ?? null) : null
+	);
+	let displayBestMove = $derived(engineInfo.bestMove || cachedBestMove || '');
+
 	let opening = $derived(getOpening(history));
 
 	let movePairs = $derived(
@@ -301,7 +318,7 @@
 				<ChessBoard
 					fen={sandboxActive ? sandboxFen : fens[currentIndex]}
 					{orientation}
-					bestMoveUci={engineInfo.bestMove || null}
+					bestMoveUci={displayBestMove || null}
 					showBestMoveArrow={showArrows}
 					on:engine={handleEngineUpdate}
 					on:move={handleMove}
@@ -364,12 +381,12 @@
 					>
 						<Trash2 class="h-3.5 w-3.5" /> Exit
 					</button>
-				{:else if engineInfo.bestMove}
+				{:else if displayBestMove}
 					<span class="text-[9px] uppercase font-black text-neutral-500 shrink-0">Best</span>
 					<span
 						class="bg-primary text-primary-foreground px-2 py-0.5 rounded font-black font-mono text-xs shrink-0"
 					>
-						{engineInfo.bestMove}
+						{displayBestMove}
 					</span>
 					<div class="flex-1 flex gap-1 overflow-x-auto no-scrollbar">
 						{#each engineInfo.pv.slice(0, 4) as move, i (i)}
@@ -460,7 +477,7 @@
 							Game review failed to complete. Move ratings may be incomplete.
 						</div>
 					{/if}
-					{#if engineInfo.bestMove}
+					{#if displayBestMove}
 						<div class="flex items-center gap-4">
 							<div class="flex flex-col">
 								<span class="text-[9px] uppercase font-black text-neutral-500 mb-1 leading-none"
@@ -469,7 +486,7 @@
 								<div
 									class="bg-primary text-primary-foreground px-3 py-1.5 rounded font-black font-mono text-sm shadow-lg shadow-primary/20"
 								>
-									{engineInfo.bestMove}
+									{displayBestMove}
 								</div>
 							</div>
 							<div class="flex-1 overflow-x-auto custom-scrollbar whitespace-nowrap pb-2">
@@ -854,11 +871,11 @@
 				{/if}
 
 				<div class="flex items-center gap-4">
-					{#if engineInfo.bestMove}
+					{#if displayBestMove}
 						<div
 							class="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-black font-mono text-lg shadow-xl shadow-primary/20"
 						>
-							{engineInfo.bestMove}
+							{displayBestMove}
 						</div>
 						<div class="flex-1 flex gap-1.5 overflow-x-auto custom-scrollbar pb-2">
 							{#each engineInfo.pv.slice(0, 3) as move, i (i)}

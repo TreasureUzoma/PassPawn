@@ -29,6 +29,13 @@ export interface GameReport {
 export interface AnalysisResult {
 	/** White-perspective evaluation (pawns) at each ply, index 0 = starting position. */
 	evaluations: number[];
+	/**
+	 * Engine's best move (UCI, e.g. "e2e4") at each ply, already computed during
+	 * the full-game pass - lets the UI show a move's best reply instantly while
+	 * browsing instead of re-running the engine live for a position that was
+	 * just reviewed.
+	 */
+	bestMoves: (string | null)[];
 	/** ratings[i] = quality of the move that produced fens[i]. ratings[0] is always null. */
 	ratings: (MoveRating | null)[];
 	/** accuracyByPly[i] = accuracy (0-100) of the move that produced fens[i]. null for ply 0 and book moves. */
@@ -307,5 +314,5 @@ export async function analyzeGame(
 		black: buildPlayerReport(totals.b)
 	};
 
-	return { evaluations, ratings, accuracyByPly, report };
+	return { evaluations, bestMoves, ratings, accuracyByPly, report };
 }
